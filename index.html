@@ -229,7 +229,24 @@ small.note{color:var(--muted);font-size:.8rem}
   </section>
   <!-- TEST -->
   <section id="view-test" class="panel" hidden>
-    <h2>בדיקת מקודד USB</h2>
+    <div id="pnCard" style="border:1px solid var(--accent);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;background:color-mix(in srgb,var(--accent) 7%,transparent)">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">כתיבה מהמחשב עם PN532</h2>
+        <span id="pnState" style="font-weight:600"></span>
+      </div>
+      <p style="margin:0;color:var(--muted)">מודול PN532 זול (כמה דולרים) שמתחבר ב‑USB וכותב מדבקות NTAG213 מהמחשב בצורה רגילה, בלי התקנה.</p>
+      <div class="row"><button class="btn primary" id="pnConnectCard" type="button">חיבור PN532</button></div>
+      <details id="pnGuide"><summary style="cursor:pointer;color:var(--accent)">מה לקנות ואיך לחבר</summary>
+        <div style="margin-top:10px;color:var(--muted);font-size:.92rem;line-height:1.7">
+          <b>אפשרות א':</b> לוח מוכן בשם <b>"PN532 USB NFC reader"</b> (עם שבב CH340). פשוט מחברים ל‑USB.<br>
+          <b>אפשרות ב':</b> מודול <b>"PN532 NFC V3"</b> (הלוח האדום) + מתאם <b>"USB to TTL CH340"</b>, עם 4 חוטים:<br>
+          <span class="mono" style="font-family:var(--f-mono);direction:ltr;display:inline-block;margin:6px 0">PN532 VCC→5V · GND→GND · TXD→RXD · RXD→TXD</span><br>
+          על המודול: שני המתגים הקטנים ל‑<b>OFF</b> (מצב HSU).<br>
+          אחרי החיבור: לחצו "חיבור PN532", בחרו <b>USB-SERIAL CH340 (COM…)</b>, ואז כתבו מדבקות בלשונית כתיבה.
+        </div>
+      </details>
+    </div>
+    <h2 style="margin-top:4px">בדיקת מקודד USB</h2>
     <p style="margin:0;color:var(--muted)">בודק איך המקודד מתקשר עם המחשב, בלי לשנות בו שום דבר. חברו את המקודד, הניחו עליו שבב, ולחצו על שלושת הכפתורים לפי הסדר. בכל פעם הדפדפן יבקש לבחור את המקודד: בחרו אותו ולחצו <b>התחבר</b>. אם הרשימה ריקה, לחצו <b>ביטול</b> ועברו לכפתור הבא.</p>
     <p id="tenv" style="margin:0"></p>
     <div class="row">
@@ -1374,7 +1391,21 @@ async function pollBackend(){
   renderSupport();
   setTimeout(pollBackend, abort?4000:2000);
 }
-usb.onChange(renderSupport); pn.onChange(renderSupport); renderSupport(); pollBackend();
+function renderPnCard(){
+  const st=$("#pnState"), card=$("#pnCard");
+  if(!st||!card) return;
+  if(!pn.supported){ card.hidden=true; return; }
+  card.hidden=false;
+  if(pn.connected){ st.textContent="מחובר ✓"; st.style.color="var(--board,#2fbf7a)"; $("#pnConnectCard").textContent="מחובר — אפשר לכתוב"; $("#pnConnectCard").disabled=true; }
+  else { st.textContent="לא מחובר"; st.style.color="var(--muted)"; $("#pnConnectCard").textContent="חיבור PN532"; $("#pnConnectCard").disabled=false; }
+}
+document.addEventListener("click", e=>{
+  if(e.target && e.target.id==="pnConnectCard"){
+    (async()=>{ try{ toast("בחרו את יציאת ה‑COM של ה‑PN532 (בדרך כלל USB-SERIAL CH340)"); await pn.connect(); toast("ה‑PN532 מחובר ✓"); }catch(err){ if(err.name!=="NotFoundError") toast(err.message); } })();
+  }
+});
+pn.onChange(renderPnCard);
+usb.onChange(renderSupport); pn.onChange(renderSupport); renderSupport(); renderPnCard(); pollBackend();
 
 renderTypes(); renderForm(); renderRecords(); renderHistory();
 })();
