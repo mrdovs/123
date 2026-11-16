@@ -189,6 +189,7 @@ tbody tr:last-child td{border-bottom:0}
     <div class="reader" id="reader">
       <div><span class="dot"></span><span id="readerText">קורא לא מחובר</span></div>
       <button class="btn sm" id="readerConnect" type="button">חיבור קורא USB</button>
+      <button class="btn sm" id="pnConnect" type="button">חיבור PN532</button>
     </div>
     <div class="counts">
       <div class="on"><b id="cOn">0</b><span>על הסיפון</span></div>
@@ -579,6 +580,175 @@ const usb = (()=>{
 
 
 
+/* ---------- PN532 over USB-serial (Web Serial, HSU 115200 8N1) ----------
+   Frame host→PN532: 00 00 FF LEN LCS D4 CMD data DCS 00   (LEN counts D4+CMD+data, LCS=-LEN, DCS=-sum)
+   ACK: 00 00 FF 00 FF 00. Reply: 00 00 FF LEN LCS D5 CMD+1 data DCS 00.
+   NTAG commands go through InDataExchange (0x40): READ 30 p (16 bytes = 4 pages), WRITE A2 p d0..d3. */
+const pn = (()=>{
+  let port=null, reader=null, rx=[], waiters=[], busy=false, listeners=[], fw="";
+  const log=[];
+  const hx=b=>[...b].map(x=>x.toString(16).padStart(2,"0")).join(" ");
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  function note(t){ log.push(t); if(log.length>300) log.shift(); const el=document.getElementById("usbLog"); if(el) el.textContent=log.join("\n"); }
+  function dbg(dir,b){ note(`${new Date().toLocaleTimeString("he-IL")} PN532 ${dir} ${hx(b.slice(0,48))}${b.length>48?` … (${b.length}B)`:""}`); }
+  function changed(){ listeners.forEach(f=>f()); }
+
+  function frame(cmd,data){
+    const body=[0xD4,cmd,...data], len=body.length;
+    let sum=0; body.forEach(x=>sum+=x);
+    return new Uint8Array([0x00,0x00,0xFF,len,(0x100-len)&255,...body,(0x100-(sum&255))&255,0x00]);
+  }
+  function parse(){
+    for(;;){
+      let s=-1;
+      for(let i=0;i+2<rx.length;i++) if(rx[i]===0x00&&rx[i+1]===0x00&&rx[i+2]===0xFF){ s=i; break; }
+      if(s<0){ if(rx.length>2) rx=rx.slice(-2); return; }
+      if(s>0) rx=rx.slice(s);
+      if(rx.length<5) return;
+      const len=rx[3], lcs=rx[4];
+      if(len===0x00&&lcs===0xFF){ rx=rx.slice(5); if(rx[0]===0x00) rx=rx.slice(1); deliver({ack:true}); continue; }   // ACK
+      if(len===0xFF&&lcs===0x00){ rx=rx.slice(5); deliver({nack:true}); continue; }                                     // NACK
+      if(((len+lcs)&255)!==0){ rx=rx.slice(1); continue; }
+      if(rx.length<5+len+2) return;
+      const body=rx.slice(5,5+len); let sum=0; body.forEach(x=>sum+=x);
+      if(((sum+rx[5+len])&255)!==0){ rx=rx.slice(1); continue; }
+      rx=rx.slice(5+len+2);
+      dbg("◀",[0,0,0xFF,len,lcs,...body]);
+      if(body[0]===0x7F){ deliver({error:true}); continue; }            // application error frame
+      deliver({tfi:body[0], cmd:body[1], data:Uint8Array.from(body.slice(2))});
+    }
+  }
+  function deliver(f){
+    const w=waiters[0]; if(!w) return;
+    if(f.ack){ w.acked=true; return; }
+    if(f.nack||f.error){ waiters.shift(); w.stop(); w.rej(new Error("ה‑PN532 דחה את הפקודה.")); return; }
+    if(f.tfi===0xD5 && f.cmd===w.cmd+1){ waiters.shift(); w.stop(); w.res(f.data); }
+  }
+  async function pump(){
+    try{
+      while(port && port.readable){
+        reader=port.readable.getReader();
+        try{ for(;;){ const {value,done}=await reader.read(); if(done) break; if(value){ rx.push(...value); parse(); } } }
+        finally{ try{ reader.releaseLock(); }catch{} reader=null; }
+      }
+    }catch(e){ note("PN532: החיבור נסגר ("+(e.message||e)+")"); }
+  }
+  async function sendRaw(bytes){ const w=port.writable.getWriter(); try{ await w.write(bytes); } finally{ w.releaseLock(); } }
+  function cmd(c,data=[],ms=1000){
+    return new Promise(async(res,rej)=>{
+      let t; const w={cmd:c,res,rej,acked:false,stop:()=>clearTimeout(t)};
+      t=setTimeout(()=>{ waiters=waiters.filter(x=>x!==w); rej(new Error(w.acked?"ה‑PN532 לא החזיר תשובה בזמן.":"ה‑PN532 לא ענה. בדקו את החיבור ואת מתג המצב (HSU).")); },ms);
+      waiters.push(w);
+      try{ const f=frame(c,data); dbg("▶",f); await sendRaw(f); }
+      catch(e){ w.stop(); waiters=waiters.filter(x=>x!==w); rej(new Error("שליחה ל‑PN532 נכשלה: "+e.message)); }
+    });
+  }
+  async function wake(){
+    await sendRaw(new Uint8Array([0x55,0x55,0,0,0,0,0,0,0,0,0,0,0,0,0,0]));   // HSU wake-up preamble
+    await sleep(20);
+    await cmd(0x14,[0x01,0x14,0x01],1000);                                     // SAMConfiguration: normal mode
+    const v=await cmd(0x02,[],1000);                                           // GetFirmwareVersion → IC Ver Rev Support
+    if(v[0]!==0x32) note("PN532: מזהה שבב לא צפוי "+hx(v));
+    fw=`PN5${v[0].toString(16)} v${v[1]}.${v[2]}`;
+    await cmd(0x32,[0x05,0xFF,0x01,0x02],1000);                                // RFConfiguration: MxRtyPassiveActivation = 2 (do not block)
+  }
+  async function attach(p){
+    await p.open({baudRate:115200});
+    port=p; rx=[]; pump();
+    try{ await wake(); }
+    catch(e){ try{ await p.close(); }catch{} port=null; throw new Error("לא התקבלה תשובה מ‑PN532. ודאו שהמתגים על המודול במצב HSU (שניהם OFF) ושהחיבור TX↔RX נכון."); }
+    try{ localStorage.setItem("pn532.auto","1"); }catch{}
+    note("PN532 מחובר: "+fw); changed();
+  }
+  if("serial" in navigator){
+    navigator.serial.addEventListener("disconnect", e=>{ if(e.target===port){ port=null; waiters.forEach(w=>{w.stop(); w.rej(new Error("ה‑PN532 נותק"));}); waiters=[]; changed(); } });
+    let auto=false; try{ auto=localStorage.getItem("pn532.auto")==="1"; }catch{}
+    if(auto) navigator.serial.getPorts().then(ps=>{ if(ps.length===1) return attach(ps[0]); }).catch(()=>{});
+  }
+
+  /* ---- NTAG helpers ---- */
+  async function select(){
+    const r=await cmd(0x4A,[0x01,0x00],1500);                 // InListPassiveTarget, 1 target, 106 kbps type A
+    if(!r.length || r[0]===0) return null;
+    const idLen=r[5], uid=r.slice(6,6+idLen);
+    return {uid:hx(uid).toUpperCase().replace(/ /g,":"), atqa:(r[2]<<8)|r[3], sak:r[4]};
+  }
+  async function ex(bytes,ms=1000){
+    const r=await cmd(0x40,[0x01,...bytes],ms);               // InDataExchange with target 1
+    if(r[0]!==0x00) throw new Error(`השבב לא קיבל את הפקודה (קוד ${r[0].toString(16)}).`);
+    return r.slice(1);
+  }
+  const readPages=p=>ex([0x30,p]);                            // 16 bytes = pages p..p+3
+  const writePage=(p,d)=>ex([0xA2,p,...d]);
+  async function session(fn){
+    if(!port) throw new Error("ה‑PN532 לא מחובר");
+    if(busy) throw new Error("ה‑PN532 עסוק בפעולה אחרת");
+    busy=true;
+    try{
+      const t=await select();
+      if(!t) throw new Error("לא זוהה שבב על ה‑PN532. הניחו מדבקה אחת במרכז האנטנה ונסו שוב.");
+      return await fn(t);
+    } finally{ busy=false; try{ await cmd(0x52,[0x00],500); }catch{} }   // InRelease
+  }
+  async function capacity(){
+    const cc=(await readPages(3)).slice(0,4);
+    if(cc[0]!==0xE1) throw new Error("השבב לא מפורמט ל‑NDEF (אין CC בעמוד 3), או שאינו NTAG/Ultralight.");
+    const bytes=cc[2]*8, name={0x12:"NTAG213",0x3E:"NTAG215",0x6D:"NTAG216",0x06:"Ultralight"}[cc[2]]||`NFC Type 2 (${bytes}B)`;
+    return {cc,bytes,name,readOnly:(cc[3]&0xF0)!==0};
+  }
+  async function readUser(n){                                 // n bytes from page 4
+    const out=[]; for(let p=4; out.length<n; p+=4) out.push(...await readPages(p));
+    return Uint8Array.from(out.slice(0,n));
+  }
+  function parseTlv(m){
+    for(let i=0;i<m.length;){
+      const t=m[i]; if(t===0){ i++; continue; } if(t===0xFE) break;
+      let l=m[i+1], j=i+2; if(l===0xFF){ l=m[i+2]<<8|m[i+3]; j=i+4; }
+      if(t===0x03) return m.slice(j,j+l); i=j+l;
+    }
+    return null;
+  }
+  async function read(){
+    return session(async t=>{
+      const c=await capacity();
+      const mem=await readUser(c.bytes);
+      return {uid:t.uid, type:c.name, capacity:c.bytes, readOnly:c.readOnly, ndef:parseTlv(mem)};
+    });
+  }
+  async function write(ndefBytes, onProg){
+    return session(async t=>{
+      const c=await capacity();
+      if(c.readOnly) throw new Error("השבב נעול לקריאה בלבד.");
+      const n=ndefBytes.length;
+      const tlv=[0x03,...(n<255?[n]:[0xFF,n>>8,n&255]),...ndefBytes,0xFE];
+      if(tlv.length>c.bytes) throw new Error(`התוכן (${tlv.length} בתים) גדול מנפח השבב ${c.name} (${c.bytes} בתים).`);
+      while(tlv.length%4) tlv.push(0);
+      const pages=tlv.length/4;
+      for(let i=0;i<pages;i++){ await writePage(4+i, tlv.slice(i*4,i*4+4)); onProg?.(i+1,pages); }
+      const back=await readUser(tlv.length);                 // verify
+      for(let i=0;i<tlv.length;i++) if(back[i]!==tlv[i]) throw new Error(`האימות נכשל בעמוד ${4+(i>>2)}.`);
+      note(`PN532: נכתבו ${pages} עמודים ואומתו`);
+      return {uid:t.uid, type:c.name, pages};
+    });
+  }
+  async function peek(){                                      // UID of the card in the field, or null
+    if(!port || busy) return undefined;
+    busy=true;
+    try{ const t=await select(); return t?t.uid:null; }
+    catch{ return undefined; }
+    finally{ busy=false; try{ await cmd(0x52,[0x00],500); }catch{} }
+  }
+  return {
+    get supported(){ return "serial" in navigator; },
+    get connected(){ return !!port; },
+    get name(){ return fw||"PN532"; },
+    get busy(){ return busy; },
+    async connect(){ const p=await navigator.serial.requestPort(); await attach(p); },
+    onChange(f){ listeners.push(f); },
+    read, write, peek, log,
+  };
+})();
+
 /* ---------------- data ---------------- */
 const KEY="gangway.v1";
 const now=()=>Date.now();
@@ -649,21 +819,26 @@ function go(m){ if(location.hash!=="#"+m) location.hash=m; else route(); }
 const hasWebNFC="NDEFReader" in window;
 function renderReader(){
   const r=$("#reader");
+  $("#pnConnect").hidden=pn.connected || !pn.supported;
+  if(pn.connected){ r.classList.add("ok"); $("#readerText").textContent="קורא PN532 מחובר"; $("#readerConnect").hidden=true; return; }
   if(usb.connected){ r.classList.add("ok"); $("#readerText").textContent="קורא USB מחובר"; $("#readerConnect").hidden=true; }
   else if(hasWebNFC){ r.classList.add("ok"); $("#readerText").textContent="NFC של הטלפון"; $("#readerConnect").hidden=true; }
   else { r.classList.remove("ok"); $("#readerText").textContent=usb.supported?"קורא לא מחובר":"הדפדפן לא תומך בקורא USB. השתמשו ב‑Chrome או Edge"; $("#readerConnect").hidden=!usb.supported; }
 }
 $("#readerConnect").onclick=async()=>{ try{ await usb.connect(); toast("הקורא מחובר ✓"); }catch(e){ if(e.name!=="NotFoundError") toast(e.message); } };
 usb.onChange(()=>{ renderReader(); });
+pn.onChange(()=>{ renderReader(); if(mode==="gangway" && !current) idleStage(); });
+$("#pnConnect").onclick=async()=>{ try{ toast("בחרו את יציאת ה‑COM של ה‑PN532 (בדרך כלל USB-SERIAL CH340)"); await pn.connect(); toast("ה‑PN532 מחובר ✓"); }catch(e){ if(e.name!=="NotFoundError") toast(e.message); } };
 
 let lastUid=null, lastUidAt=0, polling=false, encoding=false;
 async function pollLoop(){
   if(polling) return; polling=true;
   while(true){
     await new Promise(r=>setTimeout(r,650));
-    if(mode!=="gangway" || encoding || document.hidden || !usb.connected || usb.busy) { if(mode!=="gangway") lastUid=null; continue; }   // a hidden tab stops polling so another page can use the reader
+    const rd = pn.connected ? pn : usb;
+    if(mode!=="gangway" || encoding || document.hidden || !rd.connected || rd.busy) { if(mode!=="gangway") lastUid=null; continue; }   // a hidden tab stops polling so another page can use the reader
     try{
-      const uid=await usb.peek();
+      const uid=await rd.peek();
       if(uid===undefined) continue;
       if(uid===null){ lastUid=null; continue; }            // card lifted: next tap of the same card counts again
       if(uid===lastUid) continue;                           // same card still on the reader
@@ -691,7 +866,7 @@ function idleStage(){
   $("#stage").innerHTML=`<div class="idle">
     <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 9a3 3 0 0 1 6 0M10.5 11a1.5 1.5 0 0 1 3 0"/><path d="M9 16h6"/></svg></div>
     <h2>הניחו כרטיס על הקורא</h2>
-    <p class="muted" style="margin:0">${usb.connected||hasWebNFC?"הקורא מוכן":"חברו את קורא ה‑USB מהתפריט בצד, או השתמשו בבידוק ידני"}</p>
+    <p class="muted" style="margin:0">${usb.connected||pn.connected||hasWebNFC?"הקורא מוכן":"חברו קורא מהתפריט בצד, או השתמשו בבידוק ידני"}</p>
     ${exampleBanner()}
   </div>`;
 }
@@ -886,13 +1061,16 @@ function textRecord(t){ const enc=new TextEncoder(), lang=enc.encode("en"), body
   return new Uint8Array([0xD1,0x01,payload.length,0x54,...payload]); }
 $("#encodeBtn").onclick=async()=>{
   const p=upsert(); if(!p) return;
-  if(!usb.connected && !hasWebNFC) return toast("חברו את קורא ה‑USB מהתפריט בצד");
+  if(!usb.connected && !pn.connected && !hasWebNFC) return toast("חברו קורא מהתפריט בצד");
   const b=$("#encodeBtn"); b.disabled=true; b.textContent="מקשר… השאירו את הכרטיס על הקורא";
   encoding=true;
   try{
     let uid;
     const rec=textRecord(`PAX:${p.id}`);
-    if(usb.connected){
+    if(pn.connected){
+      // PN532 can write: store the passenger id on the card too, then link by serial number.
+      const r=await pn.write(rec); uid=r.uid;
+    } else if(usb.connected){
       // The checkpoint identifies cards by their serial number, so linking only needs a read.
       // (This encoder model reads every NTAG sticker but does not write to all of them.)
       uid=await usb.peek();
