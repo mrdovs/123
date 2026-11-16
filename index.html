@@ -1,0 +1,1265 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>מקודד NFC</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#1d2340">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&family=Rubik:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: single column workbench — record builder on top, live NDEF byte encoder + chip capacity below, sticky action bar */
+:root{
+  --bg:#eef0f6; --surface:#ffffff; --surface-2:#f5f6fb; --line:#d9dcea;
+  --fg:#171a2e; --muted:#5b6080; --accent:#2b47d9; --accent-fg:#ffffff;
+  --signal:#e5662e; --ok:#16855a; --warn:#b7791f; --bad:#c23b3b;
+  --hex-bg:#1d2340; --hex-fg:#c9d2ff; --hex-dim:#6d78ad; --hex-hi:#ffb48a;
+  --f-display:"Rubik","Heebo",system-ui,sans-serif;
+  --f-body:"Heebo",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1222; --surface:#171b31; --surface-2:#1d2240; --line:#2c3257;
+  --fg:#e7e9f6; --muted:#9aa0c3; --accent:#7d93ff; --accent-fg:#0f1222;
+  --signal:#ff8a55; --ok:#3ccf8e; --warn:#f0b34a; --bad:#ff6b6b;
+  --hex-bg:#0a0d1a; --hex-fg:#c9d2ff; --hex-dim:#59628f; --hex-hi:#ffb48a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1222; --surface:#171b31; --surface-2:#1d2240; --line:#2c3257;
+  --fg:#e7e9f6; --muted:#9aa0c3; --accent:#7d93ff; --accent-fg:#0f1222;
+  --signal:#ff8a55; --ok:#3ccf8e; --warn:#f0b34a; --bad:#ff6b6b;
+  --hex-bg:#0a0d1a; --hex-fg:#c9d2ff; --hex-dim:#59628f; --hex-hi:#ffb48a; color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 120px}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;align-items:center;gap:14px;padding-block:22px 4px}
+.logo{width:46px;height:46px;flex:none;border-radius:12px;background:var(--hex-bg);display:grid;place-items:center}
+.logo svg{width:30px;height:30px}
+header.top h1{font-size:1.55rem;font-weight:800;letter-spacing:-.01em}
+header.top p{margin:0;color:var(--muted);font-size:.9rem}
+
+.banner{border:1px solid var(--line);border-inline-start:4px solid var(--warn);background:var(--surface);border-radius:var(--r);padding:12px 14px;font-size:.92rem}
+.banner.ok{border-inline-start-color:var(--ok)}
+.banner b{font-weight:700}
+
+.tabs{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:4px}
+.tabs button{flex:1;border:0;background:transparent;padding:10px 8px;border-radius:9px;cursor:pointer;font-weight:500;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgb(0 0 0 / .12)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.panel h2{font-size:1.1rem;font-weight:700}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-family:var(--f-mono)}
+
+.types{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.types button{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:10px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.85rem}
+.types button svg{width:22px;height:22px;stroke:var(--muted)}
+.types button[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--fg)}
+.types button[aria-pressed="true"] svg{stroke:var(--accent)}
+
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form .full{grid-column:1/-1}
+@media (max-width:520px){.form{grid-template-columns:1fr}}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:.85rem;color:var(--muted);min-width:0}
+input[type=text],input[type=url],input[type=tel],input[type=email],input[type=number],input[type=password],select,textarea{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--fg);width:100%;min-width:0}
+textarea{min-height:84px;resize:vertical}
+input.ltr{direction:ltr;text-align:left}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface-2);border-radius:9px;padding:10px 16px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:transparent}
+.btn.signal{background:var(--signal);color:#fff;border-color:transparent}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,var(--line))}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.sm{padding:6px 10px;font-size:.82rem}
+
+.records{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.records li{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface-2)}
+.records .idx{font-family:var(--f-mono);font-size:.75rem;color:var(--muted);width:22px;flex:none}
+.records .meta{flex:1;min-width:0}
+.records .meta strong{display:block;font-size:.92rem}
+.records .meta span{display:block;font-size:.82rem;color:var(--muted);overflow-wrap:anywhere;direction:ltr;text-align:right}
+.records .tnf{font-family:var(--f-mono);font-size:.7rem;padding:2px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);flex:none}
+.empty{color:var(--muted);font-size:.9rem;border:1px dashed var(--line);border-radius:10px;padding:14px;text-align:center}
+
+.enc{background:var(--hex-bg);color:var(--hex-fg);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.enc h2{color:#fff;font-size:1.05rem}
+.enc .eyebrow{color:var(--hex-dim)}
+.hex{font-family:var(--f-mono);font-size:.8rem;line-height:1.75;direction:ltr;text-align:left;overflow-x:auto;white-space:pre;margin:0;max-height:260px;overflow-y:auto}
+.hex .h{color:var(--hex-hi)} .hex .o{color:var(--hex-dim)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.75rem;color:var(--hex-dim)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-inline-end:5px;vertical-align:middle}
+
+.cap{display:flex;flex-direction:column;gap:8px}
+.capRow{display:grid;grid-template-columns:84px 1fr 72px;gap:10px;align-items:center;font-size:.8rem;font-variant-numeric:tabular-nums}
+.capRow .name{font-family:var(--f-mono);color:var(--hex-fg)}
+.capRow .bar{height:8px;border-radius:99px;background:rgb(255 255 255 / .08);overflow:hidden;direction:ltr}
+.capRow .bar > div{height:100%;border-radius:99px;background:var(--ok)}
+.capRow.over .bar > div{background:var(--bad)}
+.capRow .val{text-align:left;direction:ltr;color:var(--hex-dim)}
+.capRow.over .val{color:var(--hex-hi)}
+
+.check{display:flex;align-items:center;gap:8px;font-size:.9rem;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+
+.scan{display:flex;flex-direction:column;align-items:center;gap:12px;padding:22px 10px;text-align:center}
+.ring{width:120px;height:120px;border-radius:50%;display:grid;place-items:center;position:relative;background:color-mix(in srgb,var(--accent) 10%,var(--surface))}
+.ring svg{width:54px;height:54px;stroke:var(--accent)}
+.ring::before,.ring::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);opacity:0}
+.scanning .ring::before{animation:pulse 1.8s infinite}
+.scanning .ring::after{animation:pulse 1.8s .9s infinite}
+@keyframes pulse{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.7);opacity:0}}
+@media (prefers-reduced-motion:reduce){.scanning .ring::before,.scanning .ring::after{animation:none;opacity:.5}}
+.status{font-weight:500}
+.status.ok{color:var(--ok)} .status.bad{color:var(--bad)} .status.wait{color:var(--accent)}
+
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:.88rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--f-mono);direction:ltr;text-align:right;overflow-wrap:anywhere}
+
+.bar-actions{position:fixed;inset:auto 0 0 0;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(8px);border-top:1px solid var(--line);
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));z-index:5}
+.bar-actions .in{max-width:760px;margin:0 auto;display:flex;gap:10px;align-items:center}
+.bar-actions .in .btn{flex:1;justify-content:center;padding:13px}
+.toast{position:fixed;inset-inline:0;bottom:calc(84px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;pointer-events:none;z-index:6}
+.toast div{background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;font-size:.9rem;opacity:0;transform:translateY(8px);transition:.2s}
+.toast.show div{opacity:1;transform:none}
+.hist li{cursor:default}
+code{font-family:var(--f-mono);font-size:.85em;background:var(--surface-2);padding:1px 5px;border-radius:4px;direction:ltr;display:inline-block}
+small.note{color:var(--muted);font-size:.8rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none" stroke="#ffb48a" stroke-width="2.2" stroke-linecap="round"><path d="M9 9a10 10 0 0 0 0 14"/><path d="M13 12a5.5 5.5 0 0 0 0 8"/><rect x="17" y="10" width="8" height="12" rx="1.5" stroke="#c9d2ff"/><path d="M19.5 14h3M19.5 18h3" stroke="#c9d2ff"/></svg>
+    </div>
+    <div>
+      <h1>מקודד NFC</h1>
+      <p>בונים רשומות NDEF, רואים את הבתים, וכותבים לשבב</p>
+    </div>
+    <a href="gangway.html" style="margin-inline-start:auto;color:var(--accent);font-size:.9rem;white-space:nowrap">בקרת גשר עלייה</a>
+  </header>
+
+  <div id="support" class="banner"></div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-write" aria-selected="true" data-tab="write">כתיבה</button>
+    <button role="tab" id="tab-read" aria-selected="false" data-tab="read">קריאה</button>
+    <button role="tab" id="tab-tools" aria-selected="false" data-tab="tools">כלים</button>
+    <button role="tab" id="tab-test" aria-selected="false" data-tab="test">בדיקת מקודד</button>
+  </div>
+
+  <!-- WRITE -->
+  <section id="view-write" class="wrap" style="gap:18px">
+    <div class="panel">
+      <div><div class="eyebrow">שלב 1</div><h2>סוג הרשומה</h2></div>
+      <div class="types" id="types"></div>
+      <form class="form" id="recForm" autocomplete="off"></form>
+      <div class="row"><button class="btn primary" id="addRec" type="button">הוספה להודעה</button><small class="note" id="formErr"></small></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div><div class="eyebrow">שלב 2</div><h2>הודעת NDEF</h2></div>
+        <button class="btn sm danger" id="clearRecs" type="button">ניקוי</button>
+      </div>
+      <ul class="records" id="recList"></ul>
+      <label class="check"><input type="checkbox" id="optLock"> נעילת השבב לקריאה בלבד אחרי הכתיבה (בלתי הפיך)</label>
+      <label class="check"><input type="checkbox" id="optOverwrite" checked> לדרוס תוכן קיים בשבב</label>
+    </div>
+
+    <div class="enc">
+      <div class="row" style="justify-content:space-between">
+        <div><div class="eyebrow">מקודד</div><h2>בתים שייכתבו לשבב</h2></div>
+        <button class="btn sm" id="copyHex" type="button" style="background:transparent;color:var(--hex-fg);border-color:var(--hex-dim)">העתקת HEX</button>
+      </div>
+      <pre class="hex" id="hex"></pre>
+      <div class="legend"><span><i style="background:var(--hex-hi)"></i>כותרת רשומה</span><span><i style="background:var(--hex-fg)"></i>מטען (payload)</span><span><i style="background:var(--hex-dim)"></i>היסט</span></div>
+      <div class="eyebrow">נפח לפי סוג שבב · <span id="totalBytes">0</span> בתים (כולל TLV)</div>
+      <div class="cap" id="cap"></div>
+    </div>
+  </section>
+
+  <!-- READ -->
+  <section id="view-read" class="panel" hidden>
+    <div class="scan" id="scanBox">
+      <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M6 6a9 9 0 0 0 0 12"/><path d="M9.5 8.5a5 5 0 0 0 0 7"/><rect x="13" y="7" width="6" height="10" rx="1"/></svg></div>
+      <div class="status" id="readStatus">לחצו "התחלת סריקה" וקרבו שבב לגב הטלפון</div>
+      <button class="btn primary" id="startRead" type="button">התחלת סריקה</button>
+    </div>
+    <div id="readResult" hidden>
+      <h2>תוכן השבב</h2>
+      <dl class="kv" id="readMeta"></dl>
+      <ul class="records" id="readList" style="margin-top:12px"></ul>
+      <div class="row" style="margin-top:12px"><button class="btn" id="cloneBtn" type="button">העתקה לעורך (שכפול שבב)</button></div>
+    </div>
+  </section>
+
+  <!-- TOOLS -->
+  <section id="view-tools" class="wrap" style="gap:18px" hidden>
+    <div class="panel">
+      <h2>מחיקת שבב</h2>
+      <p style="margin:0;color:var(--muted)">כותב רשומה ריקה ומוחק את כל התוכן הקיים. לא עובד על שבב נעול.</p>
+      <div class="row"><button class="btn danger" id="eraseBtn" type="button">מחיקה</button></div>
+    </div>
+    <div class="panel">
+      <h2>נעילה לצמיתות</h2>
+      <p style="margin:0;color:var(--muted)">הופך את השבב לקריאה בלבד. אחרי נעילה אי אפשר לכתוב או למחוק אותו יותר.</p>
+      <div class="row" id="lockRow"><button class="btn danger" id="lockAsk" type="button">נעילת שבב</button></div>
+    </div>
+    <div class="panel" id="diagPanel">
+      <h2>אבחון מקודד</h2>
+      <p style="margin:0;color:var(--muted)">בודק איך Windows מזהה את המקודד (קורא כרטיסים, יציאת COM או HID). הניחו שבב על המקודד לפני הבדיקה.</p>
+      <div class="row"><button class="btn" id="diagBtn" type="button">הרצת אבחון</button><button class="btn sm" id="diagCopy" type="button" hidden>העתקת הדוח</button></div>
+      <pre class="hex" id="diagOut" hidden style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;direction:rtl;text-align:right;max-height:420px"></pre>
+    </div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><h2>היסטוריית כתיבה</h2><button class="btn sm" id="clearHist" type="button">ניקוי</button></div>
+      <ul class="records hist" id="histList"></ul>
+    </div>
+  </section>
+  <!-- TEST -->
+  <section id="view-test" class="panel" hidden>
+    <h2>בדיקת מקודד USB</h2>
+    <p style="margin:0;color:var(--muted)">בודק איך המקודד מתקשר עם המחשב, בלי לשנות בו שום דבר. חברו את המקודד, הניחו עליו שבב, ולחצו על שלושת הכפתורים לפי הסדר. בכל פעם הדפדפן יבקש לבחור את המקודד: בחרו אותו ולחצו <b>התחבר</b>. אם הרשימה ריקה, לחצו <b>ביטול</b> ועברו לכפתור הבא.</p>
+    <p id="tenv" style="margin:0"></p>
+    <div class="row">
+      <button class="btn primary" id="bUsb" type="button">בדיקה 1: USB</button>
+      <button class="btn primary" id="bSer" type="button">בדיקה 2: יציאת COM</button>
+      <button class="btn primary" id="bHid" type="button">בדיקה 3: HID</button>
+    </div>
+    <div class="row" style="justify-content:space-between"><b>הדוח</b><button class="btn sm" id="bCopy" type="button">העתקת הדוח</button></div>
+    <pre class="hex" id="tout" style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;word-break:break-word;min-height:120px;max-height:420px"></pre>
+    <p style="margin:0;color:var(--muted);font-size:.85rem">בסיום, לחצו "העתקת הדוח" והדביקו אותו בשיחה עם Claude.</p>
+    <div class="row" style="justify-content:space-between;margin-top:6px"><b>יומן תקשורת עם המקודד</b><button class="btn sm" id="fmtBtn" type="button">פירמוט מדבקה (בדיקת כתיבה)</button> <button class="btn sm" id="probeBtn" type="button">בדיקת אורך הודעה (עם מדבקה על המקודד, לא כותב כלום)</button> <button class="btn sm" id="usbLogCopy" type="button">העתקת היומן</button></div>
+    <pre class="hex" id="usbLog" style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;word-break:break-word;min-height:80px;max-height:320px">אין עדיין תקשורת. אחרי כתיבה או קריאה יופיעו כאן הפקודות והתשובות.</pre>
+    <div style="border-top:1px solid var(--line);margin-top:6px;padding-top:14px;display:flex;flex-direction:column;gap:12px" id="fwPanel">
+      <h2>קושחת המקודד</h2>
+      <div class="row"><button class="btn" id="fwVerBtn" type="button">בדיקת גרסת קושחה</button><span id="fwVer" class="muted" style="color:var(--muted)"></span></div>
+      <div class="banner" style="border-inline-start-color:var(--bad)"><b>עדכון קושחה הוא פעולה רגישה.</b> השתמשו רק בקובץ עדכון רשמי של Camelote לדגם TCC-TSY-TBY. אל תנתקו את המקודד ואל תסגרו את הדף בזמן העדכון. עדכון שנקטע עלול להשבית את המקודד.</div>
+      <label class="f" for="fwFile">קובץ עדכון (.bin) מהיצרן<input type="file" id="fwFile" accept=".bin,application/octet-stream"></label>
+      <div id="fwInfo" class="muted" style="color:var(--muted);font-size:.9rem"></div>
+      <label class="check"><input type="checkbox" id="fwAgree" disabled> קראתי את האזהרה, והקובץ הוא קובץ רשמי של היצרן לדגם הזה</label>
+      <div class="row"><button class="btn danger" id="fwGo" type="button" disabled>עדכון קושחה</button></div>
+      <div id="fwProg" hidden style="display:flex;flex-direction:column;gap:6px">
+        <div style="height:12px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;direction:ltr"><div id="fwBar" style="height:100%;width:0;background:var(--accent)"></div></div>
+        <span id="fwPct" style="font-size:.9rem"></span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="bar-actions" id="actionBar"><div class="in">
+  <button class="btn signal" id="writeBtn" type="button">כתיבה לשבב</button>
+  <button class="btn" id="cancelBtn" type="button" hidden>ביטול</button>
+</div></div>
+<div class="toast" id="toast"><div></div></div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const enc = new TextEncoder();
+const hasWebNFC = "NDEFReader" in window;
+let backend = null;          // status object from the local PC/SC server, when running on the computer
+/* ---------- USB encoder (TCC-TSY-TBY, VID 0483 PID 4343) over WebHID ----------
+   Frame: 55 | cmd(2, BE) | len(2, BE) | data | ~x | x   where x = XOR of data bytes.
+   Sent as raw 64-byte HID reports (report id 0). Only NTAG/Ultralight commands are used:
+   0x51 host mode, 0x83 tag info, 0x81 read, 0x82 write, 0x85 = progress frames from the device. */
+const usb = (()=>{
+  const VID=0x0483, PID=0x4343;
+  const PAGES=[20,41,45,135,231];
+  const NAMES=["NTAG210","NTAG212","NTAG213","NTAG215","NTAG216"];
+  let dev=null, rx=[], waiters=[], busy=false, listeners=[];
+  const log=[];
+  const hx=b=>[...b].map(x=>x.toString(16).padStart(2,"0")).join(" ");
+  const u32=(b,o)=>(b[o]|b[o+1]<<8|b[o+2]<<16|b[o+3]<<24)>>>0;
+  function dbgNote(t){ log.push("   "+t); const el=document.getElementById("usbLog"); if(el) el.textContent=log.join("\n"); }
+  function dbg(dir,b){
+    const lim=b.length<=80?80:40;   // short frames (like the chip-info reply) are logged in full
+    log.push(`${new Date().toLocaleTimeString("he-IL")} ${dir} ${hx(b.slice(0,lim))}${b.length>lim?` … (${b.length}B)`:""}`);
+    if(log.length>300) log.shift();
+    const el=document.getElementById("usbLog"); if(el) el.textContent=log.join("\n");
+  }
+  function chk(d){ let x=0; for(const v of d) x^=v; return [(~x)&0xff, x]; }
+  function frame(cmd,d){
+    const f=new Uint8Array(d.length+7);
+    f[0]=0x55; f[1]=cmd>>8&255; f[2]=cmd&255; f[3]=d.length>>8&255; f[4]=d.length&255; f.set(d,5);
+    const c=chk(d); f[d.length+5]=c[0]; f[d.length+6]=c[1]; return f;
+  }
+  function onReport(e){
+    rx.push(...new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength));
+    for(;;){
+      const s=rx.indexOf(0x55); if(s<0){ rx=[]; return; }
+      if(s>0) rx=rx.slice(s);
+      if(rx.length<7) return;
+      const len=rx[3]<<8|rx[4];
+      if(len>0x7fa){ rx.shift(); continue; }
+      if(rx.length<len+7) return;
+      const d=Uint8Array.from(rx.slice(5,5+len)), c=chk(d);
+      if(rx[len+5]!==c[0]||rx[len+6]!==c[1]){ rx.shift(); continue; }
+      const cmd=rx[1]<<8|rx[2];
+      dbg("◀", rx.slice(0,len+7)); rx=rx.slice(len+7); deliver(cmd,d);
+    }
+  }
+  function deliver(cmd,d){
+    if(cmd===0x85){ waiters.forEach(w=>w.prog(d)); return; }
+    const i=waiters.findIndex(w=>w.cmd===cmd); if(i<0) return;
+    const w=waiters.splice(i,1)[0]; w.stop(); w.res({final:d});
+  }
+  const STEP={0x51:"מעבר למצב שליטה מהמחשב",0x83:"זיהוי השבב",0x81:"קריאת השבב",0x82:"כתיבה לשבב"};
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  /* Send one command. Resolves with {final:data} when the device answers with the same command,
+     or {done:"progress"} when opts.onProg returns true, or {done:"idle"} when progress frames
+     stopped for opts.idle ms (the encoder streams 0x85 frames and may never send a final frame). */
+  function req(cmd,data,ms,opts={}){
+    return new Promise(async (res,rej)=>{
+      let t, seen=false;
+      const finish=v=>{ clearTimeout(t); waiters=waiters.filter(x=>x!==w); res(v); };
+      const w={cmd,res,rej,stop:()=>clearTimeout(t),
+        arm:()=>{ clearTimeout(t); t=setTimeout(()=>{
+          if(seen && opts.idle) return finish({done:"idle"});
+          waiters=waiters.filter(x=>x!==w);
+          rej(new Error(`המקודד לא ענה בשלב "${STEP[cmd]||cmd.toString(16)}". השאירו את השבב על המקודד ונסו שוב. אם זה חוזר, שלחו את יומן התקשורת מלשונית 'בדיקת מקודד'.`));
+        }, seen && opts.idle ? opts.idle : ms); },
+        prog:d=>{ seen=true; if(opts.onProg?.(d)) return finish({done:"progress"}); w.arm(); }};
+      w.arm(); waiters.push(w);
+      try{
+        const f=frame(cmd,data); dbg("▶", f);
+        // Send all packets back to back: the encoder drops a frame that is not complete within ~1 s.
+        const t0=performance.now();
+        for(let i=0;i<f.length;i+=64){ const r=new Uint8Array(64); r.set(f.subarray(i,i+64)); await dev.sendReport(0,r); }
+        if(f.length>64){ const ms=Math.round(performance.now()-t0); log.push(`   (נשלחו ${Math.ceil(f.length/64)} חבילות ב‑${ms} אלפיות שנייה)`); const el=document.getElementById("usbLog"); if(el) el.textContent=log.join("\n"); }
+      }catch(e){ w.stop(); waiters=waiters.filter(x=>x!==w); rej(new Error("שליחה למקודד נכשלה: "+e.message)); }
+    });
+  }
+  function changed(){ listeners.forEach(f=>f()); }
+  async function attach(d){
+    if(!d.opened) await d.open();
+    d.removeEventListener("inputreport", onReport); d.addEventListener("inputreport", onReport);
+    dev=d; rx=[]; changed();
+  }
+  if("hid" in navigator){
+    navigator.hid.addEventListener("disconnect", e=>{ if(e.device===dev){ dev=null; waiters.forEach(w=>{w.stop(); w.rej(new Error("המקודד נותק"));}); waiters=[]; changed(); } });
+    navigator.hid.addEventListener("connect", e=>{ if(!dev && e.device.vendorId===VID && e.device.productId===PID) attach(e.device).catch(()=>{}); });
+    navigator.hid.getDevices().then(ds=>{ const d=ds.find(x=>x.vendorId===VID&&x.productId===PID); if(d) return attach(d); }).catch(()=>{});
+  }
+
+  async function host(on){ const r=(await req(0x51, Uint8Array.of(on?1:0), 2000)).final; return !!r && r[0]===(on?1:0); }
+  async function session(fn){
+    if(busy) throw new Error("המקודד עסוק בפעולה אחרת");
+    busy=true;
+    try{ await host(true); return await fn(); }
+    finally{ try{ await host(false); }catch{} busy=false; }
+  }
+  function detectType(r){
+    for(let i=0;i+7<r.length;i++){
+      if(r[i]===0x00 && r[i+1]===0x04 && r[i+7]===0x03){
+        const prod=r[i+2], size=r[i+6];
+        if(prod===0x04 && size===0x0F) return 2;
+        if(prod===0x04 && size===0x11) return 3;
+        if(prod===0x04 && size===0x13) return 4;
+        if(prod===0x03 && size===0x0B) return 0;
+        if(prod===0x03 && size===0x0E) return 1;
+      }
+    }
+    return null;
+  }
+  async function info(allowAuthFail){
+    const p=new Uint8Array(18); p[0]=4; p[1]=1;            // 4 passwords, last block
+    new DataView(p.buffer).setUint32(2,0xFFFFFFFF,true);   // FFFFFFFF, then zeros (same order as the maker's app)
+    const r=(await req(0x83,p,5000)).final;
+    if(!r || r.length<8) throw new Error("תשובה קצרה מדי מהמקודד");
+    const st=u32(r,0);
+    if(st===1) throw new Error("לא זוהה שבב על המקודד. הניחו את השבב במרכז המקודד ונסו שוב. "+errText(st));
+    if(st!==0 && !(allowAuthFail && st===4)){
+      if(st===4) throw new Error("המקודד לא הצליח לאמת את השבב (קוד 4). ייתכן שהשבב מוגן בסיסמה או שאינו NTAG. שלחו את יומן התקשורת מלשונית 'בדיקת מקודד'.");
+      throw new Error("המקודד דיווח: "+errText(st));
+    }
+    const forced=$("#usbChip")?.value;
+    let type = forced && forced!=="auto" ? +forced
+             : (st===0 && r[4]<=4 && !r[5] && !r[6] && !r[7]) ? r[4]      // the encoder reports the chip type at byte 4
+             : detectType(r);
+    if(type==null){
+      if(allowAuthFail) type=2;   // unknown chip: assume NTAG213, the smallest NTAG, so nothing is written past its memory
+      else throw new Error("לא הצלחתי לזהות את סוג השבב. בחרו אותו ידנית בתיבה 'סוג שבב' למעלה.");
+    }
+    const pwd = (st===0 && r.length>=64) ? r.slice(56,64) : Uint8Array.of(255,255,255,255,0,0,0,0);
+    return {raw:r,type,pwd,status:st};
+  }
+  const userBytes=t=>(PAGES[t]-(t?9:8))*4;
+  const ERR=["השבב לא נבחר (לא זוהה או זז)","שגיאת פקודה לכרטיס מיוחד","אימות הסיסמה של השבב נכשל","שגיאה בכתיבת חתימה","שגיאה בבדיקת מספר השבב (UID)","סוג השבב לא מתאים"];
+  const errText=c=>{ const m=ERR.filter((_,i)=>c&(1<<i)); return (m.length?m.join(", "):"שגיאה לא מוכרת")+` (קוד ${c})`; };
+  const uidOf=mem=>hx([...mem.slice(0,3),...mem.slice(4,8)]).toUpperCase().replace(/ /g,":");
+
+  /* Read the whole chip. The encoder streams one 0x85 frame per page: [page, status(1=ok), 4 data bytes]. */
+  async function readMem(inf){
+    const n=PAGES[inf.type], mem=new Uint8Array(n*4), got=new Uint8Array(n);
+    let count=0;
+    const p=new Uint8Array(16); p.set(inf.pwd,0); p[8]=inf.type;
+    const r=await req(0x81,p,15000,{idle:3000,onProg:d=>{
+      if(d.length>=6 && d[0]<n){ if(!got[d[0]]){ got[d[0]]=1; count++; } if(d[1]===1) mem.set(d.slice(2,6),d[0]*4); else got[d[0]]=2; }
+      return count>=n;
+    }});
+    if(r.final && r.final.length>=4+n*4){               // a full final frame, if this firmware sends one
+      const st=u32(r.final,0); if(st!==0) throw new Error("הקריאה נכשלה: "+errText(st));
+      return r.final.slice(4,4+n*4);
+    }
+    const missing=[...got].filter(x=>x!==1).length;
+    if(missing>n-4) throw new Error("הקריאה לא הושלמה: התקבלו רק "+(n-missing)+" עמודים מתוך "+n+". השאירו את השבב על המקודד ונסו שוב.");
+    return mem;
+  }
+  function parseMem(mem){
+    let ndef=null;
+    for(let i=16;i<mem.length;){
+      const t=mem[i]; if(t===0){ i++; continue; } if(t===0xFE) break;
+      let l=mem[i+1], j=i+2; if(l===0xFF){ l=mem[i+2]<<8|mem[i+3]; j=i+4; }
+      if(t===0x03){ ndef=mem.slice(j,j+l); break; } i=j+l;
+    }
+    return ndef;
+  }
+  async function read(){
+    return session(async()=>{
+      const inf=await info(true);
+      const mem=await readMem(inf);
+      return {uid:uidOf(mem), type:NAMES[inf.type], capacity:userBytes(inf.type), readOnly:mem[15]!==0, ndef:parseMem(mem), cc:hx(mem.slice(12,16))};
+    });
+  }
+  async function write(ndefBytes, onProg){
+    return session(async()=>{
+      const inf=await info(true), t=inf.type;   // continue when the password check fails: compatible stickers have no password
+      const n=ndefBytes.length;
+      const tlv=[0x03, ...(n<255?[n]:[0xFF,n>>8,n&255]), ...ndefBytes, 0xFE];
+      if(tlv.length>userBytes(t)) throw new Error(`התוכן (${tlv.length} בתים) גדול מנפח השבב ${NAMES[t]} (${userBytes(t)} בתים).`);
+      const pageData=new Uint8Array(1024), pageState=new Uint8Array(256);
+      pageData.set(tlv,16);                                   // page 4 onward
+      const pages=Math.ceil((tlv.length+1)/4);
+      for(let i=0;i<pages;i++) pageState[4+i]=2;              // 2 = write this page (NTAG_PAGE_NEED_WRITE)
+      const np=PAGES[t];
+      let noAnswer=false;
+      /* The maker's Windows tool uses the short-frame protocol only when the info reply is 65 bytes long;
+         this encoder answers 64, so the single 1328-byte frame is the right one (mfu_wrtie_dump_t).
+         If the encoder stays silent with write type 1 (NDEF), retry once with type 2 (write card). */
+      const big=(wt,pwd)=>{ const p=new Uint8Array(0x530), dv=new DataView(p.buffer);
+        p.set(pwd||inf.pwd,0); dv.setInt32(8,t,true); dv.setInt32(12,wt,true); p.set(pageData,0x30); p.set(pageState,0x430); return p; };
+      const small=async()=>{
+        for(let i=0;i<np;){
+          const b=new Uint8Array(80), dv=new DataView(b.buffer);
+          b.set(inf.pwd,0); dv.setInt32(8,t,true); dv.setInt32(12,1,true);
+          let cnt;
+          if(i===0){ cnt=Math.min(4,np); b.set(pageData.subarray(0,cnt*4),50); b.set(pageState.subarray(0,cnt),66); }
+          else { cnt=Math.min(np-i,12); b.set(pageData.subarray(i*4,(i+cnt)*4),18); b.set(pageState.subarray(i,i+cnt),66); }
+          b[16]=i; b[17]=cnt;
+          const r=await req(0x82,b,6000,{onProg:d=>{ onProg?.(d); return false; }});
+          const st=r.final&&r.final.length>=4?u32(r.final,0):0;
+          if(st!==0) throw new Error("הכתיבה נכשלה: "+errText(st)+".");
+          i+=cnt;
+        }
+      };
+      if(inf.raw.length===65){ await small(); }
+      else {
+        let done=false;
+        const zero=new Uint8Array(8);
+        for(const [wt,pwd,label] of [[1,null,"סוג כתיבה 1"],[2,null,"סוג כתיבה 2"],[1,zero,"סוג כתיבה 1 בלי סיסמה"]]){
+          try{
+            dbgNote(`כתיבה בהודעה אחת, ${label}`);
+            const r=await req(0x82,big(wt,pwd),6000,{idle:3000,onProg:d=>{ onProg?.(d); return false; }});
+            if(r?.final && r.final.length>=4){ const st=u32(r.final,0); if(st!==0) throw new Error("הכתיבה נכשלה: "+errText(st)+"."); }
+            done=true; break;
+          }catch(e){ if(!/לא ענה/.test(e.message)) throw e; dbgNote(`אין תשובה (${label})`); }
+        }
+        if(!done){ noAnswer=true; dbgNote("המקודד לא אישר את הכתיבה. בודק בקריאה אם הנתונים נכתבו…"); }
+      }
+      // Verify: read the chip back and compare the written pages
+      const mem=await readMem(inf);
+      const expect=new Uint8Array(pages*4); expect.set(tlv);
+      for(let i=0;i<expect.length;i++){
+        if(mem[16+i]!==expect[i]){
+          if(noAnswer) throw new Error("המקודד קיבל את פקודת הכתיבה אבל לא ענה, והשבב לא השתנה. שלחו את יומן התקשורת מלשונית 'בדיקת מקודד'.");
+          throw new Error(`האימות נכשל: עמוד ${4+(i>>2)} בשבב שונה ממה שנשלח. השאירו את השבב על המקודד ונסו שוב, ואם זה חוזר שלחו את יומן התקשורת.`);
+        }
+      }
+      if(noAnswer) dbgNote("הקריאה החוזרת מאשרת: הנתונים נכתבו לשבב.");
+      return {uid:uidOf(mem), type:NAMES[t], pages};
+    });
+  }
+  /* ---------- Firmware (protocol of the maker's UpdataFirmware module) ----------
+     File: every byte minus FW_TABLE[i & 255]. Header 52 bytes: model mask "cyb_tcc_tsy_tby", version[16] @16,
+     md5[16] @32, firmware length u32 @48. The firmware is sent as decoded once; its MD5 is checked after a second
+     decode. Device steps: 0x40 init {len, md5, version} -> 0x41 packets {offset u32, data[240], len u16 @244}
+     -> 0x42 end. Every reply carries a status byte, 0 = OK. 0x54 [0] returns {version[16], is_legal}. */
+  const FW_TABLE=Uint8Array.from("680745c87f13c46c2bba6165a17264393deed2b55a3968e8c9aa5c9f30c158da59bfdddc1b71bb23259c757d8ea2cfe3beb3e1a0e08ca1426004a55b2e35274edffdda1e00060820ac8596fa19f4890b0a60448bef8d01a79edab63971c12b4548fa1388bbc36cc9bd41e46b7b2e4307a27f1167a6e8792445d43188c1cb8c7542d7de846fb74e1102c39c5633e920c21f8a6af982f6d1bd3cea663f322317ce43a707d1612c27649e9bd19f6a6ff502101bee00fdaf8c101a858b40187a3866613727d2538fb7219a85e782f380494c04ebca723b9106a9083ef8337fb61bbf355686ec62754b5c1fd9ca6fea1d16c38dc9384bf9ee81206c7d583ff12c6cf6".match(/../g).map(h=>parseInt(h,16)));
+  const FW_MASK="cyb_tcc_tsy_tby";
+  function md5(bytes){
+    const K=new Uint32Array(64), S=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+    for(let i=0;i<64;i++) K[i]=Math.floor(Math.abs(Math.sin(i+1))*4294967296)>>>0;
+    const n=bytes.length, total=((n+8)>>>6)+1, w=new Uint32Array(total*16);
+    for(let i=0;i<n;i++) w[i>>2]|=bytes[i]<<((i%4)*8);
+    w[n>>2]|=0x80<<((n%4)*8);
+    w[total*16-2]=(n*8)>>>0; w[total*16-1]=Math.floor(n/536870912)>>>0;
+    let a0=0x67452301,b0=0xefcdab89,c0=0x98badcfe,d0=0x10325476;
+    for(let blk=0;blk<total*16;blk+=16){
+      let A=a0,B=b0,C=c0,D=d0;
+      for(let i=0;i<64;i++){
+        let F,g;
+        if(i<16){F=(B&C)|(~B&D);g=i;} else if(i<32){F=(D&B)|(~D&C);g=(5*i+1)%16;}
+        else if(i<48){F=B^C^D;g=(3*i+5)%16;} else {F=C^(B|~D);g=(7*i)%16;}
+        F=(F+A+K[i]+w[blk+g])>>>0; A=D; D=C; C=B;
+        B=(B+((F<<S[i])|(F>>>(32-S[i]))))>>>0;
+      }
+      a0=(a0+A)>>>0; b0=(b0+B)>>>0; c0=(c0+C)>>>0; d0=(d0+D)>>>0;
+    }
+    const out=new Uint8Array(16);
+    [a0,b0,c0,d0].forEach((v,i)=>{ for(let j=0;j<4;j++) out[i*4+j]=(v>>>(8*j))&255; });
+    return out;
+  }
+  
+  const txt=b=>{ const i=b.indexOf(0); return new TextDecoder("latin1").decode(i<0?b:b.slice(0,i)).trim(); };
+  function fwParse(file){
+    const b=Uint8Array.from(file);
+    for(let i=0;i<b.length;i++) b[i]=(b[i]-FW_TABLE[i&255])&255;
+    if(b.length<0x34) throw new Error("הקובץ קטן מדי ואינו קובץ עדכון.");
+    const mask=new TextDecoder("latin1").decode(b.slice(0,15));
+    if(mask!==FW_MASK) throw new Error("הקובץ אינו מיועד לדגם הזה (המזהה בקובץ אינו cyb_tcc_tsy_tby). העדכון בוטל.");
+    const len=u32(b,48);
+    if(0x34+len>b.length || len===0) throw new Error("אורך הקושחה בקובץ שגוי. הקובץ פגום.");
+    const fw=b.slice(0x34,0x34+len);
+    const plain=Uint8Array.from(fw); for(let i=0;i<plain.length;i++) plain[i]=(plain[i]-FW_TABLE[i&255])&255;
+    const sum=md5(plain), want=b.slice(32,48);
+    if(sum.some((x,i)=>x!==want[i])) throw new Error("בדיקת התקינות (MD5) של הקובץ נכשלה. הקובץ פגום ולא ייטען.");
+    return {fw, version:b.slice(16,32), versionText:txt(b.slice(16,32)), md5:sum, len};
+  }
+  async function fwVersion(){
+    if(busy) throw new Error("המקודד עסוק בפעולה אחרת");
+    busy=true;
+    try{
+      const r=(await req(0x54,Uint8Array.of(0),2500)).final;
+      if(!r || r.length<16) throw new Error("תשובה לא צפויה מהמקודד");
+      return {version:txt(r.slice(0,16)), legal:r.length>16?r[16]:null};
+    } finally{ busy=false; }
+  }
+  async function updStep(cmd,data,ms){
+    for(let a=0;a<3;a++){
+      try{
+        const r=(await req(cmd,data,ms)).final;
+        const st=r&&r.length?r[0]:0;
+        if(st!==0) throw new Error(`המקודד דחה את שלב העדכון ${cmd.toString(16)} (קוד ${st}).`);
+        return;
+      }catch(e){ if(!/לא ענה/.test(e.message)) throw e; dbgNote(`אין תשובה לשלב ${cmd.toString(16)}, ניסיון ${a+1}`); }
+    }
+    throw new Error(`המקודד לא ענה בשלב ${cmd.toString(16)} של העדכון.`);
+  }
+  async function fwUpdate(img,onProgress){
+    if(busy) throw new Error("המקודד עסוק בפעולה אחרת");
+    busy=true;
+    try{
+      const init=new Uint8Array(36), dv=new DataView(init.buffer);
+      dv.setUint32(0,img.len,true); init.set(img.md5,4); init.set(img.version,20);
+      let ok=false;
+      for(let a=0;a<4 && !ok;a++){
+        if(!dev){ await sleep(1000); continue; }
+        try{ await updStep(0x40,init,1000); ok=true; }
+        catch(e){ if(a===3 || !/לא ענה/.test(e.message)) throw e; await sleep(1000); }
+      }
+      if(!ok) throw new Error("המקודד לא נכנס למצב עדכון. לא נשלח שום מידע, והמקודד לא השתנה.");
+      dbgNote("עדכון: התחלה אושרה, שולח קושחה…");
+      for(let off=0;off<img.len;off+=240){
+        const n=Math.min(240,img.len-off), p=new Uint8Array(248), pv=new DataView(p.buffer);
+        pv.setUint32(0,off,true); p.set(img.fw.subarray(off,off+n),4); pv.setUint16(244,n,true);
+        await updStep(0x41,p,2000);
+        onProgress?.(Math.min(off+n,img.len),img.len);
+      }
+      await updStep(0x42,new Uint8Array(0),2000);
+      dbgNote("עדכון: הסתיים בהצלחה");
+    } finally{ busy=false; }
+  }
+  /* Format (0x84, payload = 8-byte password): the encoder resets the NDEF area by itself. Used as a write test. */
+  async function format(){
+    return session(async()=>{
+      const inf=await info(true);
+      let res;
+      try{
+        const r=await req(0x84,inf.pwd,15000,{idle:3000,onProg:()=>false});
+        res=r.final?("תשובה, סטטוס "+(r.final.length>=4?u32(r.final,0):"?")):"הודעות התקדמות בלבד";
+      }catch(e){ if(!/לא ענה/.test(e.message)) throw e; res="אין תשובה"; }
+      dbgNote("פירמוט → "+res);
+      const mem=await readMem(inf);
+      dbgNote("אחרי פירמוט: עמוד 3 = "+hx(mem.slice(12,16))+" , עמוד 4 = "+hx(mem.slice(16,20))+" , עמוד 5 = "+hx(mem.slice(20,24)));
+      return res;
+    });
+  }
+  /* Diagnostic: find the longest 0x82 frame the encoder accepts. Run WITH a card on the reader (the encoder
+     does not answer 0x82 without one). Every page state is 0 ("do not write"), so nothing is written;
+     longest first, so the first full-length frame also clears anything left in the encoder's buffer. */
+  async function probe(onStep){
+    return session(async()=>{
+      const out=[];
+      for(const L of [1335,1280,1200,1150,1100,1088,1072,1040,1024,1000,768,512,256,80]){
+        const p=new Uint8Array(L), dv=new DataView(p.buffer);
+        p.set([255,255,255,255,0,0,0,0],0); if(L>=16){ dv.setInt32(8,2,true); dv.setInt32(12,1,true); }
+        let ok;
+        try{ const r=await req(0x82,p,3000); ok=r.final?("תשובה, סטטוס "+(r.final.length>=4?u32(r.final,0):"?")):"תשובה"; }
+        catch(e){ if(!/לא ענה/.test(e.message)) throw e; ok="אין תשובה"; }
+        const line=`אורך ${L}: ${ok}`; out.push(line); dbgNote("בדיקת אורך → "+line); onStep?.(line);
+        await sleep(300);
+      }
+      return out;
+    });
+  }
+  return {
+    get supported(){ return "hid" in navigator; },
+    get connected(){ return !!dev && dev.opened; },
+    get name(){ return dev?.productName||"TCC-TSY-TBY"; },
+    async connect(){ const ds=await navigator.hid.requestDevice({filters:[{vendorId:VID,productId:PID}]}); if(!ds.length) throw new Error("לא נבחר מקודד"); await attach(ds[0]); },
+    cancel(){ waiters.forEach(w=>{ w.stop(); w.rej(new Error("הפעולה בוטלה")); }); waiters=[]; },
+    onChange(f){ listeners.push(f); },
+    read, write, probe, format, fwParse, fwVersion, fwUpdate, log,
+  };
+})();
+
+const hasNFC = () => hasWebNFC || !!backend || usb.connected;
+const NO_NFC = "אין חיבור למקודד. לחצו \"חיבור מקודד USB\" למעלה";
+async function api(path, body){
+  const r = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body||{})});
+  const j = await r.json(); if(!j.ok) throw new Error(j.error||"שגיאה"); return j;
+}
+const toHex = b => [...b].map(x=>x.toString(16).padStart(2,"0")).join("");
+const fromHex = h => new Uint8Array((h.match(/../g)||[]).map(x=>parseInt(x,16)));
+
+/* ---------- storage helpers ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+};
+
+/* ---------- icons ---------- */
+const I = p => `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICONS = {
+  url: I('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'),
+  text: I('<path d="M5 6h14M12 6v13M9 19h6"/>'),
+  tel: I('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>'),
+  sms: I('<path d="M4 5h16v11H9l-5 4z"/>'),
+  email: I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>'),
+  wifi: I('<path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r=".8"/>'),
+  vcard: I('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16a3 3 0 0 1 6 0M14 10h4M14 14h4"/>'),
+  geo: I('<path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>'),
+  app: I('<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>'),
+  mime: I('<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/>'),
+};
+
+/* ---------- record type definitions ---------- */
+const TYPES = {
+  url:  { label:"קישור", fields:[{k:"url",l:"כתובת",t:"url",ltr:1,full:1,ph:"https://example.com"}] },
+  text: { label:"טקסט", fields:[{k:"text",l:"טקסט",t:"textarea",full:1},{k:"lang",l:"קוד שפה",t:"text",ltr:1,ph:"he",def:"he"}] },
+  tel:  { label:"טלפון", fields:[{k:"tel",l:"מספר טלפון",t:"tel",ltr:1,ph:"+972501234567",full:1}] },
+  sms:  { label:"SMS", fields:[{k:"to",l:"נמען",t:"tel",ltr:1,ph:"+972501234567"},{k:"body",l:"תוכן ההודעה",t:"text"}] },
+  email:{ label:"אימייל", fields:[{k:"to",l:"כתובת",t:"email",ltr:1,full:1},{k:"subject",l:"נושא",t:"text"},{k:"body",l:"גוף",t:"text"}] },
+  wifi: { label:"Wi‑Fi", fields:[{k:"ssid",l:"שם רשת (SSID)",t:"text",ltr:1},{k:"auth",l:"אבטחה",t:"select",opts:[["WPA2","WPA2‑PSK"],["WPA","WPA‑PSK"],["OPEN","פתוחה"]]},{k:"key",l:"סיסמה",t:"text",ltr:1,full:1}] },
+  vcard:{ label:"כרטיס ביקור", fields:[{k:"first",l:"שם פרטי",t:"text"},{k:"last",l:"שם משפחה",t:"text"},{k:"tel",l:"טלפון",t:"tel",ltr:1},{k:"email",l:"אימייל",t:"email",ltr:1},{k:"org",l:"חברה",t:"text"},{k:"title",l:"תפקיד",t:"text"},{k:"url",l:"אתר",t:"url",ltr:1,full:1}] },
+  geo:  { label:"מיקום", fields:[{k:"lat",l:"קו רוחב",t:"number",ltr:1,ph:"32.0853"},{k:"lng",l:"קו אורך",t:"number",ltr:1,ph:"34.7818"}] },
+  app:  { label:"אפליקציה", fields:[{k:"pkg",l:"שם חבילה (Android)",t:"text",ltr:1,ph:"com.whatsapp",full:1}] },
+  mime: { label:"MIME", fields:[{k:"type",l:"סוג MIME",t:"text",ltr:1,ph:"application/json"},{k:"data",l:"תוכן",t:"textarea",ltr:1,full:1}] },
+};
+
+/* ---------- NDEF encoding ---------- */
+const URI_PREFIX = ["","http://www.","https://www.","http://","https://","tel:","mailto:","ftp://anonymous:anonymous@","ftp://ftp.","ftps://","sftp://","smb://","nfs://","ftp://","dav://","news:","telnet://","imap:","rtsp://","urn:","pop:","sip:","sips:","tftp:","btspp://","btl2cap://","btgoep://","tcpobex://","irdaobex://","file://","urn:epc:id:","urn:epc:tag:","urn:epc:pat:","urn:epc:raw:","urn:epc:","urn:nfc:"];
+const cat = (...a) => { const n=a.reduce((s,x)=>s+x.length,0), o=new Uint8Array(n); let p=0; for(const x of a){o.set(x,p);p+=x.length;} return o; };
+const u16 = n => [n>>8&255, n&255];
+const tlv = (t,v) => cat(new Uint8Array([...u16(t),...u16(v.length)]), v);
+
+function uriPayload(uri){
+  let best=0;
+  URI_PREFIX.forEach((p,i)=>{ if(i && uri.startsWith(p) && p.length>URI_PREFIX[best].length) best=i; });
+  return cat(new Uint8Array([best]), enc.encode(uri.slice(URI_PREFIX[best].length)));
+}
+function wifiPayload(r){
+  const auth = {WPA2:0x0020, WPA:0x0002, OPEN:0x0001}[r.auth||"WPA2"];
+  const encT = r.auth==="OPEN" ? 0x0001 : 0x0008;
+  const cred = cat(
+    tlv(0x1026, new Uint8Array([1])),
+    tlv(0x1045, enc.encode(r.ssid||"")),
+    tlv(0x1003, new Uint8Array(u16(auth))),
+    tlv(0x100F, new Uint8Array(u16(encT))),
+    tlv(0x1027, enc.encode(r.auth==="OPEN" ? "" : (r.key||""))),
+    tlv(0x1020, new Uint8Array([255,255,255,255,255,255]))
+  );
+  return tlv(0x100E, cred);
+}
+const esc = s => String(s||"").replace(/([,;\\])/g,"\\$1");
+function vcardText(r){
+  const L=["BEGIN:VCARD","VERSION:3.0",`N:${esc(r.last)};${esc(r.first)};;;`,`FN:${esc([r.first,r.last].filter(Boolean).join(" "))}`];
+  if(r.org) L.push("ORG:"+esc(r.org)); if(r.title) L.push("TITLE:"+esc(r.title));
+  if(r.tel) L.push("TEL;TYPE=CELL:"+r.tel); if(r.email) L.push("EMAIL:"+r.email); if(r.url) L.push("URL:"+r.url);
+  L.push("END:VCARD"); return L.join("\r\n");
+}
+
+/* Turn a UI record into {tnf, type, payload(Uint8Array), web(Web NFC record), summary} */
+function build(rec){
+  const v = rec.v;
+  const uriRec = uri => ({tnf:1,type:"U",payload:uriPayload(uri),web:{recordType:"url",data:uri},summary:uri});
+  switch(rec.kind){
+    case "url": {
+      let u=(v.url||"").trim(); if(!u) throw "צריך להזין כתובת";
+      if(!/^[a-z][a-z0-9+.-]*:/i.test(u)) u="https://"+u; return uriRec(u);
+    }
+    case "tel": { const t=(v.tel||"").replace(/[^\d+*#]/g,""); if(!t) throw "צריך מספר טלפון"; return uriRec("tel:"+t); }
+    case "sms": { const t=(v.to||"").replace(/[^\d+]/g,""); if(!t) throw "צריך נמען"; return uriRec(`sms:${t}`+(v.body?`?body=${encodeURIComponent(v.body)}`:"")); }
+    case "email": {
+      if(!v.to) throw "צריך כתובת אימייל";
+      const q=[]; if(v.subject) q.push("subject="+encodeURIComponent(v.subject)); if(v.body) q.push("body="+encodeURIComponent(v.body));
+      return uriRec("mailto:"+v.to+(q.length?"?"+q.join("&"):""));
+    }
+    case "geo": {
+      const la=parseFloat(v.lat), lo=parseFloat(v.lng);
+      if(!(Math.abs(la)<=90 && Math.abs(lo)<=180)) throw "קואורדינטות לא תקינות"; return uriRec(`geo:${la},${lo}`);
+    }
+    case "text": {
+      if(!v.text) throw "צריך להזין טקסט";
+      const lang=(v.lang||"he").trim(), lb=enc.encode(lang), tb=enc.encode(v.text);
+      return {tnf:1,type:"T",payload:cat(new Uint8Array([lb.length]),lb,tb),web:{recordType:"text",lang,encoding:"utf-8",data:v.text},summary:`[${lang}] ${v.text}`};
+    }
+    case "wifi": {
+      if(!v.ssid) throw "צריך שם רשת"; if(v.auth!=="OPEN" && (v.key||"").length<8) throw "סיסמת WPA צריכה לפחות 8 תווים";
+      const p=wifiPayload(v); return {tnf:2,type:"application/vnd.wfa.wsc",payload:p,web:{recordType:"mime",mediaType:"application/vnd.wfa.wsc",data:p},summary:`${v.ssid} · ${v.auth||"WPA2"}`};
+    }
+    case "vcard": {
+      if(!v.first && !v.last) throw "צריך לפחות שם"; const t=vcardText(v), p=enc.encode(t);
+      return {tnf:2,type:"text/vcard",payload:p,web:{recordType:"mime",mediaType:"text/vcard",data:p},summary:[v.first,v.last].filter(Boolean).join(" ")+(v.tel?` · ${v.tel}`:"")};
+    }
+    case "app": {
+      const pk=(v.pkg||"").trim(); if(!/^[a-z][\w]*(\.[a-z_][\w]*)+$/i.test(pk)) throw "שם חבילה לא תקין, למשל com.example.app";
+      const p=enc.encode(pk); return {tnf:4,type:"android.com:pkg",payload:p,web:{recordType:"android.com:pkg",data:p},summary:pk};
+    }
+    case "mime": {
+      const t=(v.type||"").trim(); if(!/^[\w.+-]+\/[\w.+-]+$/.test(t)) throw "סוג MIME לא תקין";
+      const p=enc.encode(v.data||""); return {tnf:2,type:t,payload:p,web:{recordType:"mime",mediaType:t,data:p},summary:`${t} · ${p.length}B`};
+    }
+  }
+  throw "סוג לא מוכר";
+}
+
+/* Serialize full NDEF message; returns bytes and a map of header byte ranges */
+function encodeMessage(built){
+  const parts=[], marks=[]; let off=0;
+  built.forEach((b,i)=>{
+    const type=enc.encode(b.type), sr=b.payload.length<256;
+    let h=b.tnf & 7; if(i===0) h|=0x80; if(i===built.length-1) h|=0x40; if(sr) h|=0x10;
+    const head=new Uint8Array([h, type.length, ...(sr?[b.payload.length]:[b.payload.length>>>24&255,b.payload.length>>>16&255,b.payload.length>>>8&255,b.payload.length&255])]);
+    marks.push([off, off+head.length+type.length]);
+    parts.push(head,type,b.payload); off+=head.length+type.length+b.payload.length;
+  });
+  return {bytes:cat(...parts), marks};
+}
+
+/* ---------- state ---------- */
+let kind = "url";
+let records = store.get("nfc.records", null) || [
+  {kind:"url", v:{url:"https://example.com/menu"}, example:true},
+  {kind:"app", v:{pkg:"com.android.chrome"}, example:true}
+];
+let history = store.get("nfc.history", []);
+let abort = null;
+
+/* ---------- UI: type picker + form ---------- */
+function renderTypes(){
+  $("#types").innerHTML = Object.entries(TYPES).map(([k,t]) =>
+    `<button type="button" data-k="${k}" aria-pressed="${k===kind}">${ICONS[k]}${t.label}</button>`).join("");
+}
+function renderForm(values={}){
+  const f = TYPES[kind].fields;
+  $("#recForm").innerHTML = f.map(x=>{
+    const id=`f-${kind}-${x.k}`, val=(values[x.k]??x.def??"").toString().replace(/"/g,"&quot;");
+    const cls=x.ltr?' class="ltr"':''; let ctl;
+    if(x.t==="textarea") ctl=`<textarea id="${id}" name="${x.k}"${cls}>${val}</textarea>`;
+    else if(x.t==="select") ctl=`<select id="${id}" name="${x.k}">${x.opts.map(([a,b])=>`<option value="${a}"${values[x.k]===a?" selected":""}>${b}</option>`).join("")}</select>`;
+    else ctl=`<input id="${id}" name="${x.k}" type="${x.t==="number"?"text":x.t}"${x.t==="number"?' inputmode="decimal"':''}${cls} placeholder="${x.ph||""}" value="${val}">`;
+    return `<label class="f${x.full?" full":""}" for="${id}">${x.l}${ctl}</label>`;
+  }).join("");
+  $("#formErr").textContent="";
+}
+function readForm(){ const o={}; new FormData($("#recForm")).forEach((v,k)=>o[k]=v); return o; }
+
+$("#types").addEventListener("click", e=>{
+  const b=e.target.closest("button"); if(!b) return; kind=b.dataset.k; renderTypes(); renderForm();
+});
+$("#addRec").addEventListener("click", ()=>{
+  const rec={kind, v:readForm()};
+  try{ build(rec); }catch(err){ $("#formErr").textContent=err; $("#formErr").style.color="var(--bad)"; return; }
+  records = records.filter(r=>!r.example); records.push(rec); save(); renderForm(); toast("הרשומה נוספה");
+});
+
+/* ---------- UI: records + encoder ---------- */
+const TNF_NAME={1:"Well‑known",2:"MIME",4:"External"};
+const CHIPS=[["NTAG213",144],["NTAG215",504],["NTAG216",888],["MIFARE UL",46],["MIFARE 1K",716]];
+function save(){ store.set("nfc.records", records); renderRecords(); }
+function renderRecords(){
+  const list=$("#recList");
+  if(!records.length){ list.innerHTML=`<li class="empty" style="display:block">ההודעה ריקה. בחרו סוג רשומה למעלה ולחצו "הוספה להודעה".</li>`; }
+  else list.innerHTML = records.map((r,i)=>{
+    let b; try{ b=build(r);}catch{ b={tnf:0,summary:"שגיאה"}; }
+    return `<li><span class="idx">${String(i+1).padStart(2,"0")}</span>
+      <div class="meta"><strong>${TYPES[r.kind].label}${r.example?' <small class="note">(דוגמה)</small>':''}</strong><span>${escapeHtml(b.summary)}</span></div>
+      <span class="tnf">${TNF_NAME[b.tnf]||"?"}</span>
+      <button class="btn sm" data-act="edit" data-i="${i}" type="button" aria-label="עריכה">עריכה</button>
+      <button class="btn sm danger" data-act="del" data-i="${i}" type="button" aria-label="מחיקה">✕</button></li>`;
+  }).join("");
+  renderEncoder();
+}
+$("#recList").addEventListener("click", e=>{
+  const b=e.target.closest("button[data-act]"); if(!b) return; const i=+b.dataset.i;
+  if(b.dataset.act==="del"){ records.splice(i,1); save(); }
+  else { const r=records[i]; kind=r.kind; renderTypes(); renderForm(r.v); records.splice(i,1); save(); $("#recForm").scrollIntoView({behavior:"smooth",block:"center"}); }
+});
+$("#clearRecs").addEventListener("click", ()=>{ records=[]; save(); });
+
+function currentBuilt(){ return records.map(r=>{ try{return build(r);}catch{return null;} }).filter(Boolean); }
+function renderEncoder(){
+  const built=currentBuilt();
+  if(!built.length){ $("#hex").innerHTML='<span class="o">— אין נתונים —</span>'; $("#totalBytes").textContent="0"; renderCap(0); return; }
+  const {bytes,marks}=encodeMessage(built);
+  const isHead=i=>marks.some(([a,b])=>i>=a&&i<b);
+  let out="";
+  for(let i=0;i<bytes.length;i+=8){
+    out+=`<span class="o">${i.toString(16).padStart(4,"0")}  </span>`;
+    for(let j=i;j<Math.min(i+8,bytes.length);j++){
+      const h=bytes[j].toString(16).padStart(2,"0").toUpperCase();
+      out+= isHead(j)?`<span class="h">${h}</span> `:h+" ";
+    }
+    out+="\n";
+  }
+  $("#hex").innerHTML=out;
+  const total = bytes.length + (bytes.length<255?2:4) + 1; // NDEF TLV (03 len ... FE)
+  $("#totalBytes").textContent=total;
+  renderCap(total);
+}
+function renderCap(n){
+  $("#cap").innerHTML = CHIPS.map(([name,cap])=>{
+    const pct=Math.min(100,n/cap*100), over=n>cap;
+    return `<div class="capRow${over?" over":""}"><span class="name">${name}</span><div class="bar"><div style="width:${pct}%"></div></div><span class="val">${n}/${cap}</span></div>`;
+  }).join("");
+}
+$("#copyHex").addEventListener("click", async ()=>{
+  const built=currentBuilt(); if(!built.length) return;
+  const hex=[...encodeMessage(built).bytes].map(b=>b.toString(16).padStart(2,"0").toUpperCase()).join(" ");
+  try{ await navigator.clipboard.writeText(hex); toast("ה‑HEX הועתק"); }
+  catch{ const r=document.createRange(); r.selectNodeContents($("#hex")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("סמנו והעתיקו ידנית"); }
+});
+
+/* ---------- NFC operations ---------- */
+function setBusy(on, label){
+  $("#writeBtn").disabled=on; $("#cancelBtn").hidden=!on;
+  if(label) $("#writeBtn").textContent=label;
+}
+function nfcErr(e){
+  if(e && e.name==="AbortError") return "הפעולה בוטלה";
+  if(e && e.name==="NotAllowedError") return "אין הרשאה ל‑NFC. אשרו את ההרשאה בדפדפן.";
+  if(e && e.name==="NotSupportedError") return "NFC כבוי או לא נתמך. הפעילו NFC בהגדרות הטלפון.";
+  if(e && e.name==="NetworkError") return "השבב הורחק מוקדם מדי או שהוא נעול. נסו שוב.";
+  return (e && e.message) || String(e);
+}
+$("#cancelBtn").addEventListener("click", ()=>{ abort?.abort(); usb.cancel(); if(backend) fetch("/api/cancel",{method:"POST"}).catch(()=>{}); });
+
+$("#writeBtn").addEventListener("click", async ()=>{
+  if(!hasNFC()) return toast(NO_NFC);
+  const built=currentBuilt(); if(!built.length) return toast("אין רשומות לכתיבה");
+  if(usb.connected && $("#optLock").checked) return toast("נעילה עדיין לא זמינה במקודד ה‑USB. בטלו את הסימון ונסו שוב.");
+  abort=new AbortController(); setBusy(true, (backend||usb.connected)?"הניחו שבב על המקודד…":"קרבו שבב…");
+  try{
+    let uid="";
+    if(usb.connected){
+      const res=await usb.write(encodeMessage(built).bytes, ()=>setBusy(true,"כותב…"));
+      uid=` · ${res.type} ${res.uid}`;
+    } else if(backend){
+      const res=await api("/api/write",{ndef:toHex(encodeMessage(built).bytes), lock:$("#optLock").checked, timeout:20});
+      uid=` · ${res.type} ${res.uid}`;
+    } else {
+      const ndef=new NDEFReader();
+      await ndef.write({records:built.map(b=>b.web)}, {overwrite:$("#optOverwrite").checked, signal:abort.signal});
+      if($("#optLock").checked){ await ndef.makeReadOnly({signal:abort.signal}); }
+    }
+    history.unshift({t:Date.now(), n:built.length, s:built.map(b=>b.summary).join(" | ")+uid, lock:$("#optLock").checked});
+    history=history.slice(0,30); store.set("nfc.history",history); renderHistory();
+    toast($("#optLock").checked?"נכתב ונעל בהצלחה":"נכתב בהצלחה ✓");
+    if(navigator.vibrate) navigator.vibrate(80);
+  }catch(e){ toast(nfcErr(e)); }
+  finally{ setBusy(false,"כתיבה לשבב"); abort=null; }
+});
+
+/* read */
+let lastRead=null;
+$("#startRead").addEventListener("click", async ()=>{
+  if(!hasNFC()) return setReadStatus(NO_NFC,"bad");
+  if(abort){ abort.abort(); usb.cancel(); if(backend) fetch("/api/cancel",{method:"POST"}).catch(()=>{}); return; }
+  abort=new AbortController();
+  if(usb.connected){
+    $("#scanBox").classList.add("scanning"); $("#startRead").textContent="עצירת קריאה";
+    setReadStatus("קורא מהשבב שעל המקודד…","wait");
+    try{
+      const res=await usb.read();
+      showParsed(res.uid, res.type, res.capacity, res.readOnly, res.ndef ? parseNdef(res.ndef) : []);
+      setReadStatus("השבב נקרא ✓","ok");
+    }catch(e){ setReadStatus(e.message,"bad"); }
+    finally{ $("#scanBox").classList.remove("scanning"); $("#startRead").textContent="התחלת סריקה"; abort=null; }
+    return;
+  }
+  if(backend){
+    const sig=abort.signal;
+    $("#scanBox").classList.add("scanning"); $("#startRead").textContent="עצירת סריקה";
+    setReadStatus("הניחו שבב על המקודד…","wait");
+    try{
+      const res=await api("/api/read",{timeout:30});
+      if(sig.aborted) throw new Error("הסריקה נעצרה");
+      showParsed(res.uid, res.type, res.capacity, res.readOnly, res.ndef ? parseNdef(fromHex(res.ndef)) : []);
+      setReadStatus("השבב נקרא ✓","ok");
+    }catch(e){ setReadStatus(e.message,"bad"); }
+    finally{ $("#scanBox").classList.remove("scanning"); $("#startRead").textContent="התחלת סריקה"; abort=null; }
+    return;
+  }
+  const ndef=new NDEFReader();
+  try{
+    await ndef.scan({signal:abort.signal});
+    $("#scanBox").classList.add("scanning"); $("#startRead").textContent="עצירת סריקה";
+    setReadStatus("ממתין לשבב…","wait");
+    ndef.onreadingerror=()=>setReadStatus("לא ניתן לקרוא את השבב. אולי הוא ריק או לא בפורמט NDEF.","bad");
+    ndef.onreading=ev=>{ showReading(ev); setReadStatus("השבב נקרא ✓","ok"); if(navigator.vibrate) navigator.vibrate(60); };
+    abort.signal.addEventListener("abort",()=>{ $("#scanBox").classList.remove("scanning"); $("#startRead").textContent="התחלת סריקה"; setReadStatus("הסריקה נעצרה",""); abort=null; });
+  }catch(e){ setReadStatus(nfcErr(e),"bad"); abort=null; }
+});
+function setReadStatus(t,c){ const s=$("#readStatus"); s.textContent=t; s.className="status "+(c||""); }
+const dec=(d,enc="utf-8")=>{ try{ return new TextDecoder(enc).decode(d);}catch{ return ""; } };
+function showReading(ev){
+  const recs=ev.message.records;
+  $("#readResult").hidden=false;
+  $("#readMeta").innerHTML=`<dt>מספר סידורי</dt><dd>${ev.serialNumber||"לא זמין"}</dd><dt>רשומות</dt><dd>${recs.length}</dd>`;
+  lastRead=[];
+  $("#readList").innerHTML = recs.length ? [...recs].map((r,i)=>{
+    let label=r.recordType, val="";
+    if(r.recordType==="url"||r.recordType==="absolute-url"){ val=dec(r.data); label="קישור"; lastRead.push(fromUri(val)); }
+    else if(r.recordType==="text"){ val=dec(r.data,r.encoding||"utf-8"); label=`טקסט (${r.lang||"?"})`; lastRead.push({kind:"text",v:{text:val,lang:r.lang||"he"}}); }
+    else if(r.recordType==="mime"){ label=r.mediaType;
+      if(r.mediaType==="application/vnd.wfa.wsc"){ const w=parseWifi(new Uint8Array(r.data.buffer)); val=`${w.ssid} · ${w.auth}`; label="Wi‑Fi"; lastRead.push({kind:"wifi",v:w}); }
+      else { val=dec(r.data); lastRead.push(r.mediaType==="text/vcard"?{kind:"mime",v:{type:"text/vcard",data:val}}:{kind:"mime",v:{type:r.mediaType,data:val}}); } }
+    else if(r.recordType==="android.com:pkg"){ val=dec(r.data); label="אפליקציה"; lastRead.push({kind:"app",v:{pkg:val}}); }
+    else if(r.recordType==="empty"){ val="(ריק)"; }
+    else { val=r.data?[...new Uint8Array(r.data.buffer)].map(b=>b.toString(16).padStart(2,"0")).join(" "):""; }
+    return `<li><span class="idx">${String(i+1).padStart(2,"0")}</span><div class="meta"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(val)}</span></div></li>`;
+  }).join("") : `<li class="empty" style="display:block">השבב ריק</li>`;
+}
+function fromUri(u){
+  if(u.startsWith("tel:")) return {kind:"tel",v:{tel:u.slice(4)}};
+  if(u.startsWith("geo:")){ const [a,b]=u.slice(4).split(","); return {kind:"geo",v:{lat:a,lng:b}}; }
+  if(u.startsWith("mailto:")){ const x=new URL(u); return {kind:"email",v:{to:x.pathname,subject:x.searchParams.get("subject")||"",body:x.searchParams.get("body")||""}}; }
+  if(u.startsWith("sms:")){ const [t,q]=u.slice(4).split("?"); return {kind:"sms",v:{to:t,body:new URLSearchParams(q||"").get("body")||""}}; }
+  return {kind:"url",v:{url:u}};
+}
+function parseWifi(b){
+  const o={ssid:"",key:"",auth:"WPA2"};
+  const walk=(a,s,e)=>{ for(let i=s;i+4<=e;){ const t=a[i]<<8|a[i+1], l=a[i+2]<<8|a[i+3], v=a.subarray(i+4,i+4+l);
+    if(t===0x100E) walk(a,i+4,i+4+l); else if(t===0x1045) o.ssid=dec(v); else if(t===0x1027) o.key=dec(v);
+    else if(t===0x1003){ const x=v[0]<<8|v[1]; o.auth=x===1?"OPEN":x===2?"WPA":"WPA2"; } i+=4+l; } };
+  walk(b,0,b.length); return o;
+}
+/* Parse raw NDEF bytes (from the USB encoder) into display items */
+function parseNdef(b){
+  const items=[]; let i=0;
+  while(i<b.length){
+    const h=b[i++], tnf=h&7, sr=h&0x10, il=h&0x08;
+    const tl=b[i++]; let pl;
+    if(sr) pl=b[i++]; else { pl=(b[i]<<24|b[i+1]<<16|b[i+2]<<8|b[i+3])>>>0; i+=4; }
+    const idl=il?b[i++]:0;
+    const type=dec(b.subarray(i,i+tl)); i+=tl+idl;
+    const p=b.subarray(i,i+pl); i+=pl;
+    if(tnf===0){ items.push({label:"רשומה ריקה",val:"(ריק)"}); }
+    else if(tnf===1 && type==="U"){ const u=(URI_PREFIX[p[0]]||"")+dec(p.subarray(1)); items.push({label:"קישור",val:u,rec:fromUri(u)}); }
+    else if(tnf===1 && type==="T"){ const ll=p[0]&0x3f, lang=dec(p.subarray(1,1+ll)), t=dec(p.subarray(1+ll), p[0]&0x80?"utf-16":"utf-8");
+      items.push({label:`טקסט (${lang})`,val:t,rec:{kind:"text",v:{text:t,lang}}}); }
+    else if(tnf===2 && type==="application/vnd.wfa.wsc"){ const w=parseWifi(p); items.push({label:"Wi‑Fi",val:`${w.ssid} · ${w.auth}`,rec:{kind:"wifi",v:w}}); }
+    else if(tnf===2){ const t=dec(p); items.push({label:type,val:t,rec:{kind:"mime",v:{type,data:t}}}); }
+    else if(tnf===4 && type==="android.com:pkg"){ const t=dec(p); items.push({label:"אפליקציה",val:t,rec:{kind:"app",v:{pkg:t}}}); }
+    else items.push({label:`TNF ${tnf} ${type}`,val:toHex(p)});
+    if(h&0x40) break;
+  }
+  return items;
+}
+function showParsed(uid,type,cap,ro,items){
+  $("#readResult").hidden=false;
+  $("#readMeta").innerHTML=`<dt>מספר סידורי</dt><dd>${escapeHtml(uid||"לא זמין")}</dd>`+
+    (type?`<dt>סוג שבב</dt><dd>${escapeHtml(type)} · ${cap} בתים</dd>`:"")+
+    (ro!=null?`<dt>מצב</dt><dd>${ro?"נעול לקריאה בלבד":"פתוח לכתיבה"}</dd>`:"")+
+    `<dt>רשומות</dt><dd>${items.length}</dd>`;
+  lastRead=items.filter(x=>x.rec).map(x=>x.rec);
+  $("#readList").innerHTML = items.length ? items.map((x,i)=>`<li><span class="idx">${String(i+1).padStart(2,"0")}</span><div class="meta"><strong>${escapeHtml(x.label)}</strong><span>${escapeHtml(x.val)}</span></div></li>`).join("")
+    : `<li class="empty" style="display:block">השבב ריק</li>`;
+}
+$("#cloneBtn").addEventListener("click", ()=>{
+  if(!lastRead?.length) return; records=lastRead.slice(); save(); switchTab("write"); toast("התוכן הועתק לעורך");
+});
+
+/* tools */
+$("#eraseBtn").addEventListener("click", async ()=>{
+  if(!hasNFC()) return toast(NO_NFC);
+  abort=new AbortController(); toast((backend||usb.connected)?"הניחו את השבב על המקודד…":"קרבו את השבב למחיקה…");
+  try{
+    if(usb.connected) await usb.write(Uint8Array.of(0xD0,0,0));
+    else if(backend) await api("/api/erase",{timeout:20});
+    else await new NDEFReader().write({records:[{recordType:"empty"}]},{signal:abort.signal});
+    toast("השבב נמחק ✓"); }
+  catch(e){ toast(nfcErr(e)); } finally{ abort=null; }
+});
+$("#lockAsk").addEventListener("click", ()=>{
+  $("#lockRow").innerHTML=`<span style="color:var(--bad);font-weight:500">בטוחים? אי אפשר לבטל.</span>
+    <button class="btn danger" id="lockYes" type="button">כן, לנעול</button><button class="btn" id="lockNo" type="button">ביטול</button>`;
+});
+$("#lockRow").addEventListener("click", async e=>{
+  if(e.target.id==="lockNo"){ resetLockRow(); }
+  if(e.target.id==="lockYes"){
+    resetLockRow();
+    if(!hasNFC()) return toast(NO_NFC);
+    if(usb.connected && !backend && !hasWebNFC) return toast("נעילה עדיין לא זמינה במקודד ה‑USB.");
+    abort=new AbortController(); toast(backend?"הניחו את השבב על המקודד…":"קרבו את השבב לנעילה…");
+    try{
+      if(backend) await api("/api/lock",{timeout:20});
+      else await new NDEFReader().makeReadOnly({signal:abort.signal});
+      toast("השבב ננעל"); }
+    catch(e2){ toast(nfcErr(e2)); } finally{ abort=null; }
+  }
+});
+function resetLockRow(){
+  $("#lockRow").innerHTML=`<button class="btn danger" id="lockAsk" type="button">נעילת שבב</button>`;
+  $("#lockAsk").addEventListener("click", ()=>$("#lockRow").innerHTML=`<span style="color:var(--bad);font-weight:500">בטוחים? אי אפשר לבטל.</span>
+    <button class="btn danger" id="lockYes" type="button">כן, לנעול</button><button class="btn" id="lockNo" type="button">ביטול</button>`);
+}
+function renderHistory(){
+  $("#histList").innerHTML = history.length ? history.map(h=>`<li><div class="meta"><strong>${new Date(h.t).toLocaleString("he-IL")} · ${h.n} רשומות${h.lock?" · נעול":""}</strong><span>${escapeHtml(h.s)}</span></div></li>`).join("")
+    : `<li class="empty" style="display:block">עדיין לא נכתבו שבבים מהמכשיר הזה</li>`;
+}
+$("#diagBtn").addEventListener("click", async ()=>{
+  if(!backend) return toast("האבחון עובד רק כשהאפליקציה פועלת מתוך NFC-Encoder.exe");
+  const b=$("#diagBtn"); b.disabled=true; b.textContent="בודק… (עד 30 שניות)";
+  try{ const r=await api("/api/diagnose",{}); $("#diagOut").textContent=r.report; $("#diagOut").hidden=false; $("#diagCopy").hidden=false; }
+  catch(e){ toast(e.message); }
+  finally{ b.disabled=false; b.textContent="הרצת אבחון"; }
+});
+$("#diagCopy").addEventListener("click", async ()=>{
+  try{ await navigator.clipboard.writeText($("#diagOut").textContent); toast("הדוח הועתק"); }
+  catch{ const r=document.createRange(); r.selectNodeContents($("#diagOut")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("סמנו והעתיקו ידנית"); }
+});
+$("#fmtBtn").addEventListener("click", async ()=>{
+  if(!usb.connected) return toast("חברו קודם את המקודד");
+  const btn=$("#fmtBtn"); btn.disabled=true; btn.textContent="מפרמט… (עד 20 שניות)";
+  try{ const r=await usb.format(); toast("פירמוט: "+r+". העתיקו את היומן ושלחו אותו."); }
+  catch(e){ toast(e.message); }
+  finally{ btn.disabled=false; btn.textContent="פירמוט מדבקה (בדיקת כתיבה)"; }
+});
+$("#probeBtn").addEventListener("click", async ()=>{
+  if(!usb.connected) return toast("חברו קודם את המקודד");
+  const btn=$("#probeBtn"); btn.disabled=true; btn.textContent="בודק… (כחצי דקה)";
+  try{ await usb.probe(l=>{ btn.textContent=l; }); toast("הבדיקה הסתיימה. העתיקו את היומן ושלחו אותו."); }
+  catch(e){ toast(e.message); }
+  finally{ btn.disabled=false; btn.textContent="בדיקת אורך הודעה (עם מדבקה על המקודד, לא כותב כלום)"; }
+});
+$("#usbLogCopy").addEventListener("click", async ()=>{
+  try{ await navigator.clipboard.writeText($("#usbLog").textContent); toast("היומן הועתק"); }
+  catch{ const r=document.createRange(); r.selectNodeContents($("#usbLog")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("סמנו והעתיקו ידנית"); }
+});
+/* firmware panel */
+let fwImg=null;
+$("#fwVerBtn").addEventListener("click", async ()=>{
+  if(!usb.connected) return toast("חברו קודם את המקודד");
+  try{ const v=await usb.fwVersion(); $("#fwVer").textContent=`גרסה נוכחית: ${v.version||"(ריק)"}${v.legal===0?" · המקודד דיווח שהוא לא מאושר":""}`; }
+  catch(e){ $("#fwVer").textContent=e.message; }
+});
+$("#fwFile").addEventListener("change", async e=>{
+  fwImg=null; $("#fwAgree").checked=false; $("#fwAgree").disabled=true; $("#fwGo").disabled=true;
+  const f=e.target.files[0]; if(!f){ $("#fwInfo").textContent=""; return; }
+  try{
+    fwImg=usb.fwParse(new Uint8Array(await f.arrayBuffer()));
+    $("#fwInfo").innerHTML=`הקובץ תקין: <b>${escapeHtml(f.name)}</b> · דגם cyb_tcc_tsy_tby · גרסה <b>${escapeHtml(fwImg.versionText||"?")}</b> · ${fwImg.len.toLocaleString("he-IL")} בתים · בדיקת MD5 עברה.`;
+    $("#fwAgree").disabled=false;
+  }catch(err){ $("#fwInfo").innerHTML=`<span style="color:var(--bad)">${escapeHtml(err.message)}</span>`; }
+});
+$("#fwAgree").addEventListener("change", ()=>{ $("#fwGo").disabled=!($("#fwAgree").checked && fwImg); });
+$("#fwGo").addEventListener("click", async ()=>{
+  if(!usb.connected) return toast("חברו קודם את המקודד");
+  if(!fwImg || !$("#fwAgree").checked) return;
+  const btn=$("#fwGo"); btn.disabled=true; $("#fwFile").disabled=true; $("#fwAgree").disabled=true;
+  $("#fwProg").hidden=false; $("#fwPct").textContent="מתחיל… אל תנתקו את המקודד";
+  const stopLeave=e=>{ e.preventDefault(); e.returnValue=""; };
+  window.addEventListener("beforeunload", stopLeave);
+  try{
+    await usb.fwUpdate(fwImg,(done,total)=>{ const p=Math.round(done*100/total); $("#fwBar").style.width=p+"%"; $("#fwPct").textContent=`${p}% · ${done.toLocaleString("he-IL")} מתוך ${total.toLocaleString("he-IL")} בתים · אל תנתקו`; });
+    $("#fwPct").textContent="העדכון הסתיים בהצלחה. נתקו וחברו את המקודד, ואז בדקו את הגרסה.";
+    toast("עדכון הקושחה הסתיים ✓");
+  }catch(err){
+    $("#fwPct").textContent="העדכון נעצר: "+err.message+" השאירו את המקודד מחובר ושלחו את יומן התקשורת.";
+    toast(err.message);
+  }finally{
+    window.removeEventListener("beforeunload", stopLeave);
+    $("#fwFile").disabled=false; $("#fwAgree").checked=false; btn.disabled=true;
+  }
+});
+$("#clearHist").addEventListener("click", ()=>{ history=[]; store.set("nfc.history",history); renderHistory(); });
+
+/* tabs */
+function switchTab(t){
+  document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===t));
+  $("#view-write").hidden=t!=="write"; $("#view-read").hidden=t!=="read"; $("#view-tools").hidden=t!=="tools"; $("#view-test").hidden=t!=="test";
+  $("#actionBar").hidden=t!=="write";
+  if(t!=="read" && abort){ abort.abort(); }
+}
+document.querySelector(".tabs").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) switchTab(b.dataset.tab); });
+
+/* misc */
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+let tt; function toast(m){ const t=$("#toast"); t.firstElementChild.textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),Math.max(2600,m.length*70)); }
+
+const sup=$("#support");
+function renderSupport(){
+  sup.classList.remove("ok");
+  if(backend){
+    if(!backend.pyscard){ sup.innerHTML="<b>שירות הכרטיסים החכמים לא זמין.</b>"; return; }
+    if(!backend.readers.length){ sup.innerHTML="<b>לא נמצא מקודד.</b> חברו את קורא ה‑NFC ב‑USB. אם הוא מחובר, הריצו את אבחון המקודד בלשונית כלים."; return; }
+    sup.classList.add("ok");
+    const c=backend.card;
+    sup.innerHTML=`<b>מקודד מחובר:</b> ${escapeHtml(backend.readers[0])}${backend.mock?" (מצב הדגמה)":""}<br>`+
+      (c?`שבב על המקודד: <b>${escapeHtml(c.type)}</b> · ${escapeHtml(c.uid)} · ${c.capacity} בתים${c.readOnly?" · נעול":""}`:"אין שבב על המקודד");
+    return;
+  }
+  if(usb.supported && !hasWebNFC){
+    if(usb.connected){
+      sup.classList.add("ok");
+      sup.innerHTML=`<b>מקודד USB מחובר:</b> ${escapeHtml(usb.name)}. הניחו שבב על המקודד ולחצו "כתיבה לשבב" או "התחלת סריקה".
+        <div class="row" style="margin-top:8px"><label class="f" for="usbChip" style="flex-direction:row;align-items:center;gap:8px">סוג שבב
+        <select id="usbChip" style="width:auto"><option value="auto">זיהוי אוטומטי</option><option value="2">NTAG213</option><option value="3">NTAG215</option><option value="4">NTAG216</option><option value="0">NTAG210</option><option value="1">NTAG212</option></select></label></div>`;
+    } else {
+      sup.innerHTML=`<b>מקודד USB לא מחובר.</b> חברו את המקודד ולחצו על הכפתור. בחלון שייפתח בחרו <b>TCC-TSY-TBY</b> ולחצו <b>התחבר</b>.
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="usbConnect" type="button">חיבור מקודד USB</button></div>`;
+      $("#usbConnect").onclick=async()=>{ try{ await usb.connect(); toast("המקודד מחובר ✓"); }catch(e){ if(e.name!=="NotFoundError") toast(e.message); } };
+    }
+    return;
+  }
+  if(hasWebNFC){ sup.classList.add("ok"); sup.innerHTML="<b>NFC זמין.</b> ודאו ש‑NFC מופעל בהגדרות הטלפון, ואז קרבו שבב לגב המכשיר."; }
+  else { sup.innerHTML="<b>אין כרגע חיבור לשבב.</b> במחשב, עברו ללשונית <b>בדיקת מקודד</b> כדי לזהות את מקודד ה‑USB. בטלפון אנדרואיד, פתחו את הקובץ ב‑Chrome. המקודד ותצוגת הבתים עובדים בכל מקרה."; }
+}
+async function pollBackend(){
+  if(location.protocol!=="http:") return;
+  try{ const r=await fetch("/api/status",{cache:"no-store"}); if(r.ok){ backend=await r.json(); } }catch{ backend=null; }
+  renderSupport();
+  setTimeout(pollBackend, abort?4000:2000);
+}
+usb.onChange(renderSupport); renderSupport(); pollBackend();
+
+renderTypes(); renderForm(); renderRecords(); renderHistory();
+})();
+</script>
+<script>
+(()=>{
+
+const out=document.getElementById("tout");
+const log=(...a)=>{ out.textContent+=a.join(" ")+"\n"; out.scrollTop=out.scrollHeight; };
+const hex=b=>[...b].map(x=>x.toString(16).padStart(2,"0")).join(" ");
+const h4=n=>"0x"+(n??0).toString(16).padStart(4,"0");
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const VID=0x0483;
+const CLS={1:"Audio",2:"CDC (serial control)",3:"HID",8:"Mass storage",10:"CDC data (serial)",11:"CCID smart card reader",255:"Vendor-specific"};
+
+const tenvEl=document.getElementById("tenv");
+const caps={serial:"serial" in navigator, hid:"hid" in navigator, usb:"usb" in navigator};
+tenvEl.innerHTML = (caps.usb||caps.serial||caps.hid)
+  ? `<span style="color:var(--ok)">הדפדפן תומך בבדיקה.</span> USB: ${caps.usb?"כן":"לא"} · COM: ${caps.serial?"כן":"לא"} · HID: ${caps.hid?"כן":"לא"}`
+  : `<span style="color:var(--bad)">הדפדפן הזה לא תומך בגישה להתקנים. פתחו את הקובץ ב‑Chrome או Edge.</span>`;
+log("Browser:", navigator.userAgent);
+log("Secure context:", isSecureContext, "| usb:", caps.usb, "serial:", caps.serial, "hid:", caps.hid);
+
+function busy(b,on){ ["bUsb","bSer","bHid"].forEach(id=>document.getElementById(id).disabled=on); }
+
+/* ---- 1. WebUSB: read the descriptors, which tell exactly what kind of device this is ---- */
+document.getElementById("bUsb").onclick=async()=>{
+  if(!caps.usb) return log("\n[USB] not supported in this browser");
+  busy(1,true); log("\n=== Test 1: USB descriptors ===");
+  try{
+    const d=await navigator.usb.requestDevice({filters:[{vendorId:VID}]});
+    log(`Device: ${d.manufacturerName||"?"} / ${d.productName||"?"}  VID=${h4(d.vendorId)} PID=${h4(d.productId)}  USB ${d.usbVersionMajor}.${d.usbVersionMinor}  class=${d.deviceClass}`);
+    for(const c of d.configurations||[]){
+      log(`Config ${c.configurationValue}:`);
+      for(const itf of c.interfaces) for(const alt of itf.alternates){
+        log(`  Interface ${itf.interfaceNumber}: class ${alt.interfaceClass} (${CLS[alt.interfaceClass]||"other"}) sub ${alt.interfaceSubclass} proto ${alt.interfaceProtocol}  name=${alt.interfaceName||""}`);
+        for(const e of alt.endpoints) log(`    EP ${e.endpointNumber} ${e.direction} ${e.type} ${e.packetSize}B`);
+      }
+    }
+    try{ await d.open(); log("open(): OK (browser can talk to it directly over USB)"); await d.close(); }
+    catch(e){ log("open(): "+e.name+" — "+e.message); }
+  }catch(e){ log("[USB] "+e.name+": "+e.message); }
+  busy(0,false);
+};
+
+/* ---- 2. Web Serial: listen while a tag is presented, and probe for a PN532 chip ---- */
+document.getElementById("bSer").onclick=async()=>{
+  if(!caps.serial) return log("\n[COM] not supported in this browser");
+  busy(1,true); log("\n=== Test 2: COM port ===");
+  try{
+    const port=await navigator.serial.requestPort({filters:[{usbVendorId:VID}]});
+    const i=port.getInfo(); log(`Port: VID=${h4(i.usbVendorId)} PID=${h4(i.usbProductId)}`);
+    for(const baud of [115200,9600]){
+      try{ await port.open({baudRate:baud}); }catch(e){ log(`open @${baud}: ${e.name} ${e.message}`); continue; }
+      log(`-- ${baud} baud: listening 5s (keep the tag on the encoder)...`);
+      const got=[]; const reader=port.readable.getReader();
+      const stop=sleep(5000).then(()=>reader.cancel());
+      const pump=(async()=>{ try{ for(;;){ const {value,done}=await reader.read(); if(done) break; got.push(...value);} }catch{} })();
+      // PN532 probe: wake-up + GetFirmwareVersion
+      try{ const w=port.writable.getWriter();
+        await w.write(new Uint8Array([0x55,0x55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0x00,0x00,0xFF,0x03,0xFD,0xD4,0x14,0x01,0x17,0x00]));
+        await sleep(100);
+        await w.write(new Uint8Array([0x00,0x00,0xFF,0x02,0xFE,0xD4,0x02,0x2A,0x00])); w.releaseLock();
+      }catch(e){ log("write: "+e.message); }
+      await stop; await pump; reader.releaseLock();
+      log(`received ${got.length} bytes: ${hex(got.slice(0,200))}`);
+      if(got.length){ log("as text: "+JSON.stringify(new TextDecoder("latin1").decode(new Uint8Array(got.slice(0,200))))); }
+      const s=hex(got); if(s.includes("00 00 ff 00 ff 00")||s.includes("d5 03")) log(">>> PN532 detected");
+      await port.close();
+    }
+  }catch(e){ log("[COM] "+e.name+": "+e.message); }
+  busy(0,false);
+};
+
+/* ---- 3. WebHID: list report layout and capture reports while a tag is presented ---- */
+document.getElementById("bHid").onclick=async()=>{
+  if(!caps.hid) return log("\n[HID] not supported in this browser");
+  busy(1,true); log("\n=== Test 3: HID ===");
+  try{
+    const ds=await navigator.hid.requestDevice({filters:[{vendorId:VID}]});
+    if(!ds.length) log("no device selected");
+    for(const d of ds){
+      log(`Device: ${d.productName} VID=${h4(d.vendorId)} PID=${h4(d.productId)}`);
+      for(const c of d.collections){
+        log(`  Collection usagePage=${h4(c.usagePage)} usage=${h4(c.usage)}  in:${c.inputReports.map(r=>r.reportId).join(",")} out:${c.outputReports.map(r=>r.reportId).join(",")} feature:${c.featureReports.map(r=>r.reportId).join(",")}`);
+        if(c.usagePage===1 && c.usage===6) log("  >>> Keyboard collection (the encoder may type the tag number like a keyboard)");
+      }
+      try{
+        await d.open(); log("  open(): OK, listening 5s — lift the tag and put it back now...");
+        const h=e=>log(`  report ${e.reportId}: ${hex(new Uint8Array(e.data.buffer))}`);
+        d.addEventListener("inputreport",h); await sleep(5000); d.removeEventListener("inputreport",h); await d.close();
+      }catch(e){ log("  open(): "+e.name+" — "+e.message); }
+    }
+  }catch(e){ log("[HID] "+e.name+": "+e.message); }
+  busy(0,false);
+};
+
+document.getElementById("bCopy").onclick=async()=>{
+  try{ await navigator.clipboard.writeText(out.textContent); document.getElementById("bCopy").textContent="הועתק ✓"; }
+  catch{ const r=document.createRange(); r.selectNodeContents(out); const s=getSelection(); s.removeAllRanges(); s.addRange(r); document.getElementById("bCopy").textContent="מסומן: Ctrl+C"; }
+};
+
+})();
+</script>
+</body>
+</html>

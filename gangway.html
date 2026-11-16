@@ -1,0 +1,955 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>בקרת גשר עלייה</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&family=Rubik:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: kiosk — fixed side rail with the four stations and live counts, main work area on the left.
+   Single dark "bridge console" look on purpose: it runs on a dedicated screen at the gangway. */
+:root{
+  --bg:#0b1622; --rail:#0f1e2e; --panel:#13263a; --panel-2:#183049; --line:#244261;
+  --fg:#e8f0f8; --muted:#8fa6bf; --accent:#3fb7c9; --accent-ink:#04222a;
+  --board:#2fbf7a; --ashore:#f0a53a; --alert:#ef5a5a; --alert-bg:#3a1418;
+  --f-display:"Rubik","Heebo",system-ui,sans-serif;
+  --f-body:"Heebo",system-ui,"Segoe UI",Arial,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.5}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance}
+
+.app{display:grid;grid-template-columns:250px 1fr;min-height:100%}
+@media (max-width:860px){.app{grid-template-columns:1fr}.rail{position:static!important;height:auto!important}}
+
+/* side rail */
+.rail{background:var(--rail);border-inline-start:1px solid var(--line);padding:20px 16px;display:flex;flex-direction:column;gap:18px;position:sticky;top:0;height:100vh}
+.brand{display:flex;gap:10px;align-items:center}
+.brand .mark{width:42px;height:42px;border-radius:10px;background:var(--accent);display:grid;place-items:center;flex:none}
+.brand .mark svg{width:26px;height:26px}
+.brand b{font-family:var(--f-display);font-size:1.05rem;display:block}
+.brand small{color:var(--muted);font-size:.78rem}
+.clock{font-family:var(--f-mono);font-size:1.6rem;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.clock small{display:block;font-family:var(--f-body);font-size:.8rem;color:var(--muted);letter-spacing:0}
+nav.modes{display:flex;flex-direction:column;gap:6px}
+@media (max-width:860px){nav.modes{flex-direction:row;flex-wrap:wrap}}
+nav.modes a{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;color:var(--muted);text-decoration:none;font-weight:500;border:1px solid transparent}
+nav.modes a svg{width:20px;height:20px;flex:none;stroke:currentColor}
+nav.modes a[aria-current="page"]{background:var(--panel-2);color:var(--fg);border-color:var(--line)}
+nav.modes a .lock{margin-inline-start:auto;font-size:.75rem;color:var(--muted)}
+.counts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:auto}
+.counts div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
+.counts b{display:block;font-family:var(--f-display);font-size:1.6rem;font-variant-numeric:tabular-nums}
+.counts span{font-size:.78rem;color:var(--muted)}
+.counts .on b{color:var(--board)} .counts .off b{color:var(--ashore)}
+.reader{font-size:.82rem;color:var(--muted);display:flex;flex-direction:column;gap:8px}
+.reader .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-inline-end:6px}
+.reader.ok .dot{background:var(--board)}
+
+/* main */
+main{padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));min-width:0}
+.view{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.vhead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.vhead h1{font-size:1.7rem;font-weight:800}
+.vhead p{margin:0;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel h2{font-size:1.1rem}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--panel-2);border-radius:10px;padding:10px 16px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
+.btn.danger{color:var(--alert);border-color:color-mix(in srgb,var(--alert) 45%,var(--line))}
+.btn.sm{padding:6px 10px;font-size:.85rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+input[type=text],input[type=search],input[type=password],select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 14px;width:100%;min-width:0}
+textarea{min-height:70px;resize:vertical}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:var(--muted);min-width:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:600px){.grid2{grid-template-columns:1fr}}
+.search{position:relative}
+.search svg{position:absolute;inset-inline-start:14px;top:50%;translate:0 -50%;width:18px;height:18px;stroke:var(--muted)}
+.search input{padding-inline-start:42px;font-size:1.05rem}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;font-size:.8rem;font-weight:700;white-space:nowrap}
+.pill.on{background:color-mix(in srgb,var(--board) 18%,transparent);color:var(--board)}
+.pill.off{background:color-mix(in srgb,var(--ashore) 18%,transparent);color:var(--ashore)}
+.pill.alert{background:var(--alert-bg);color:var(--alert)}
+.avatar{width:56px;height:56px;border-radius:50%;background:var(--panel-2);border:2px solid var(--line);display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:1.2rem;flex:none}
+.muted{color:var(--muted)}
+.mono{font-family:var(--f-mono);direction:ltr;unicode-bidi:isolate}
+.example{border:1px dashed var(--ashore);color:var(--ashore);border-radius:10px;padding:10px 14px;font-size:.9rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* checkpoint */
+.gw{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}
+@media (max-width:1100px){.gw{grid-template-columns:1fr}}
+.stage{min-height:440px;justify-content:center}
+.idle{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding:30px 10px}
+.ring{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;position:relative;background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.ring svg{width:64px;height:64px;stroke:var(--accent)}
+.ring::before,.ring::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);opacity:0;animation:pulse 2.4s infinite}
+.ring::after{animation-delay:1.2s}
+@keyframes pulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){.ring::before,.ring::after{animation:none}}
+.idle h2{font-size:1.6rem}
+.verdict{border-radius:14px;padding:18px 20px;display:flex;align-items:center;gap:16px}
+.verdict.on{background:color-mix(in srgb,var(--board) 16%,var(--panel));border:1px solid var(--board)}
+.verdict.off{background:color-mix(in srgb,var(--ashore) 14%,var(--panel));border:1px solid var(--ashore)}
+.verdict.unknown{background:var(--alert-bg);border:1px solid var(--alert)}
+.verdict .big{font-family:var(--f-display);font-size:1.9rem;font-weight:800;line-height:1.15}
+.verdict.on .big{color:var(--board)} .verdict.off .big{color:var(--ashore)} .verdict.unknown .big{color:var(--alert)}
+.verdict .time{font-family:var(--f-mono);font-size:1.4rem;margin-inline-start:auto;font-variant-numeric:tabular-nums}
+.who{display:flex;gap:16px;align-items:center}
+.who .avatar{width:84px;height:84px;font-size:1.8rem}
+.who h2{font-size:1.8rem}
+.alerts{background:var(--alert-bg);border:1px solid var(--alert);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.alerts b{color:var(--alert)}
+.notes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.notes li{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start}
+.notes li.alert{border-color:var(--alert)}
+.notes li .txt{flex:1;min-width:0;overflow-wrap:anywhere}
+.notes li small{display:block;color:var(--muted);font-size:.78rem}
+.feed{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.feed li{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:.9rem}
+.feed li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed .t{font-family:var(--f-mono);color:var(--muted);font-size:.8rem}
+.dirsel{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px}
+.dirsel button{border:0;background:transparent;padding:7px 12px;border-radius:7px;cursor:pointer;color:var(--muted);font-size:.88rem}
+.dirsel button[aria-pressed="true"]{background:var(--panel-2);color:var(--fg)}
+
+/* tables */
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:600px){.tiles{grid-template-columns:1fr}}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.tile b{display:block;font-family:var(--f-display);font-size:2.2rem;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile span{color:var(--muted);font-size:.9rem}
+.tile.on b{color:var(--board)} .tile.off b{color:var(--ashore)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th,td{text-align:right;padding:11px 14px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{font-size:.78rem;color:var(--muted);font-weight:500;letter-spacing:.04em;background:var(--rail)}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--panel-2)}
+tbody tr:last-child td{border-bottom:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{border:1px solid var(--line);background:transparent;border-radius:99px;padding:6px 14px;cursor:pointer;color:var(--muted)}
+.chips button[aria-pressed="true"]{background:var(--panel-2);color:var(--fg);border-color:var(--accent)}
+
+/* search */
+.split{display:grid;grid-template-columns:340px 1fr;gap:18px;align-items:start}
+@media (max-width:900px){.split{grid-template-columns:1fr}}
+.results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:70vh;overflow:auto}
+.results li button{width:100%;text-align:right;display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);cursor:pointer}
+.results li button[aria-current="true"]{border-color:var(--accent)}
+.results .avatar{width:40px;height:40px;font-size:.95rem}
+.results .meta{flex:1;min-width:0}
+.results .meta b{display:block}
+.results .meta small{color:var(--muted)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin:0}
+.kv dt{color:var(--muted)} .kv dd{margin:0}
+.hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:260px;overflow:auto}
+.hist li{display:flex;gap:10px;font-size:.9rem;padding:6px 0;border-bottom:1px dashed var(--line)}
+.hist li .t{font-family:var(--f-mono);color:var(--muted);min-width:150px}
+.empty{color:var(--muted);text-align:center;padding:24px;border:1px dashed var(--line);border-radius:12px}
+
+/* PIN */
+.pin{max-width:360px;margin:30px auto;text-align:center;align-items:center}
+.pin .dots{display:flex;gap:14px;justify-content:center;margin:6px 0}
+.pin .dots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted)}
+.pin .dots i.f{background:var(--accent);border-color:var(--accent)}
+.pin .pad{display:grid;grid-template-columns:repeat(3,72px);gap:12px;justify-content:center}
+.pin .pad button{height:64px;border-radius:14px;border:1px solid var(--line);background:var(--panel-2);font-family:var(--f-display);font-size:1.5rem;cursor:pointer}
+.pin .err{color:var(--alert);min-height:1.5em}
+.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+
+.hex{font-family:var(--f-mono);font-size:.78rem;direction:ltr;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;white-space:pre-wrap;max-height:260px;overflow:auto;margin:0}
+.toast{position:fixed;inset-inline:0;bottom:calc(20px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;pointer-events:none;z-index:9}
+.toast div{background:var(--fg);color:var(--bg);padding:11px 18px;border-radius:99px;font-weight:500;opacity:0;transform:translateY(8px);transition:.2s;max-width:90vw}
+.toast.show div{opacity:1;transform:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#04222a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l2.5 3h13L21 17"/><path d="M5 17V11h14v6"/><path d="M8 11V7h8v4"/><path d="M12 7V3"/></svg></div>
+      <div><b>בקרת גשר עלייה</b><small id="shipName">האונייה</small></div>
+    </div>
+    <div class="clock" id="clock">--:--<small id="date"></small></div>
+    <nav class="modes" aria-label="עמדות">
+      <a href="#gangway" data-mode="gangway"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8a4 4 0 0 1 8 0M10 10.5a2 2 0 0 1 4 0"/><path d="M9 16h6"/></svg>עמדת בידוק</a>
+      <a href="#onboard" data-mode="onboard"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M3 18l2 3h14l2-3"/><path d="M5 18v-6h14v6"/><path d="M9 12V8h6v4"/></svg>על הסיפון / ביבשה</a>
+      <a href="#search" data-mode="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>חיפוש נוסעים</a>
+      <a href="#encode" data-mode="encode"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h4M7 14h7"/><circle cx="17" cy="12" r="1.5"/></svg>קידוד כרטיסים<span class="lock" id="lockBadge">🔒</span></a>
+    </nav>
+    <div class="reader" id="reader">
+      <div><span class="dot"></span><span id="readerText">קורא לא מחובר</span></div>
+      <button class="btn sm" id="readerConnect" type="button">חיבור קורא USB</button>
+    </div>
+    <div class="counts">
+      <div class="on"><b id="cOn">0</b><span>על הסיפון</span></div>
+      <div class="off"><b id="cOff">0</b><span>ביבשה</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- CHECKPOINT -->
+    <section class="view" id="v-gangway" hidden>
+      <div class="vhead">
+        <div><h1>עמדת בידוק</h1><p>הניחו כרטיס על הקורא. המערכת מזהה את הנוסע ורושמת עלייה או ירידה.</p></div>
+        <div class="dirsel" role="group" aria-label="כיוון תנועה">
+          <button type="button" data-dir="auto" aria-pressed="true">אוטומטי</button>
+          <button type="button" data-dir="on" aria-pressed="false">עלייה בלבד</button>
+          <button type="button" data-dir="off" aria-pressed="false">ירידה בלבד</button>
+        </div>
+      </div>
+      <div class="gw">
+        <div class="panel stage" id="stage"></div>
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div class="panel">
+            <h2>בידוק ידני</h2>
+            <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="search" id="gwSearch" placeholder="שם או מספר תא" autocomplete="off"></div>
+            <ul class="results" id="gwResults" style="max-height:220px"></ul>
+          </div>
+          <div class="panel">
+            <h2>תנועות אחרונות</h2>
+            <ul class="feed" id="feed"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ONBOARD / ASHORE -->
+    <section class="view" id="v-onboard" hidden>
+      <div class="vhead"><div><h1>על הסיפון / ביבשה</h1><p>מצב נוכחי של כל הנוסעים ואנשי הצוות, ושעת התנועה האחרונה.</p></div></div>
+      <div class="tiles">
+        <div class="tile on"><b id="tOn">0</b><span>על הסיפון</span></div>
+        <div class="tile off"><b id="tOff">0</b><span>ביבשה</span></div>
+        <div class="tile"><b id="tAll">0</b><span>סה"כ רשומים</span></div>
+      </div>
+      <div class="panel">
+        <div class="row" style="justify-content:space-between">
+          <div class="search" style="flex:1;min-width:220px"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="search" id="obSearch" placeholder="חיפוש לפי שם" autocomplete="off"></div>
+          <div class="chips" id="obFilter">
+            <button type="button" data-f="all" aria-pressed="true">הכל</button>
+            <button type="button" data-f="on" aria-pressed="false">על הסיפון</button>
+            <button type="button" data-f="off" aria-pressed="false">ביבשה</button>
+            <button type="button" data-f="alert" aria-pressed="false">עם התראה</button>
+          </div>
+        </div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>שם</th><th>תא</th><th>סוג</th><th>מצב</th><th>תנועה אחרונה</th><th>הערות</th></tr></thead>
+          <tbody id="obBody"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- SEARCH -->
+    <section class="view" id="v-search" hidden>
+      <div class="vhead"><div><h1>חיפוש נוסעים</h1><p>חיפוש לפי שם או מספר תא, היסטוריית תנועות והערות.</p></div></div>
+      <div class="split">
+        <div class="panel">
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="search" id="sSearch" placeholder="שם או מספר תא" autocomplete="off"></div>
+          <ul class="results" id="sResults"></ul>
+        </div>
+        <div class="panel" id="sDetail"></div>
+      </div>
+    </section>
+
+    <!-- ENCODE (PIN) -->
+    <section class="view" id="v-encode" hidden>
+      <div class="panel pin" id="pinBox">
+        <h1 style="font-size:1.4rem">קידוד כרטיסים</h1>
+        <p class="muted" style="margin:0">הקישו קוד גישה</p>
+        <div class="dots" id="pinDots"><i></i><i></i><i></i></div>
+        <div class="pad" id="pinPad"></div>
+        <div class="err" id="pinErr" aria-live="polite"></div>
+      </div>
+      <div id="encBody" hidden style="display:flex;flex-direction:column;gap:18px">
+        <div class="vhead">
+          <div><h1>קידוד כרטיסים</h1><p>בחרו נוסע או צרו חדש, הניחו כרטיס על הקורא ולחצו "קישור כרטיס".</p></div>
+          <button class="btn" id="lockBtn" type="button">נעילה</button>
+        </div>
+        <div class="split">
+          <div class="panel">
+            <div class="row" style="justify-content:space-between"><h2>נוסע</h2><button class="btn sm" id="newPax" type="button">+ נוסע חדש</button></div>
+            <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="search" id="eSearch" placeholder="חיפוש לפי שם" autocomplete="off"></div>
+            <ul class="results" id="eResults" style="max-height:340px"></ul>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <form class="panel" id="paxForm" autocomplete="off">
+              <h2 id="formTitle">נוסע חדש</h2>
+              <div class="grid2">
+                <label class="f" for="fFirst">שם פרטי<input type="text" id="fFirst" required></label>
+                <label class="f" for="fLast">שם משפחה<input type="text" id="fLast" required></label>
+                <label class="f" for="fCabin">מספר תא<input type="text" id="fCabin" inputmode="numeric"></label>
+                <label class="f" for="fType">סוג<select id="fType"><option>אורח</option><option>צוות</option><option>אורח VIP</option><option>מבקר</option></select></label>
+              </div>
+              <div class="row">
+                <button class="btn" type="submit" id="saveBtn">שמירה</button>
+                <button class="btn primary" type="button" id="encodeBtn">קישור כרטיס</button>
+                <button class="btn danger" type="button" id="delBtn" hidden>מחיקת נוסע</button>
+              </div>
+              <p class="muted" id="cardInfo" style="margin:0;font-size:.9rem"></p>
+            </form>
+            <div class="panel">
+              <h2>ניהול</h2>
+              <div class="grid2">
+                <label class="f" for="shipInput">שם האונייה<input type="text" id="shipInput"></label>
+                <label class="f" for="pinInput">קוד גישה לקידוד<input type="password" id="pinInput" inputmode="numeric" maxlength="8"></label>
+              </div>
+              <div class="row">
+                <button class="btn" id="saveSettings" type="button">שמירת הגדרות</button>
+                <button class="btn" id="exportBtn" type="button">גיבוי לקובץ</button>
+                <label class="btn" for="importFile" style="cursor:pointer">שחזור מגיבוי<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+              </div>
+              <div class="row" id="wipeRow"><button class="btn danger" id="wipeAsk" type="button">מחיקת כל הנתונים</button></div>
+              <details>
+                <summary class="muted" style="cursor:pointer">יומן תקשורת עם הקורא</summary>
+                <pre class="hex" id="usbLog">אין עדיין תקשורת.</pre>
+              </details>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"><div></div></div>
+
+<script>
+(()=>{
+"use strict";
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let tt; function toast(m){ const t=$("#toast"); t.firstElementChild.textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),Math.max(2600,m.length*70)); }
+
+/* ---------- USB encoder (TCC-TSY-TBY, VID 0483 PID 4343) over WebHID ----------
+   Frame: 55 | cmd(2, BE) | len(2, BE) | data | ~x | x   where x = XOR of data bytes.
+   Sent as raw 64-byte HID reports (report id 0). Only NTAG/Ultralight commands are used:
+   0x51 host mode, 0x83 tag info, 0x81 read, 0x82 write, 0x85 = progress frames from the device. */
+const usb = (()=>{
+  const VID=0x0483, PID=0x4343;
+  const PAGES=[20,41,45,135,231];
+  const NAMES=["NTAG210","NTAG212","NTAG213","NTAG215","NTAG216"];
+  let dev=null, rx=[], waiters=[], busy=false, listeners=[];
+  const log=[];
+  const hx=b=>[...b].map(x=>x.toString(16).padStart(2,"0")).join(" ");
+  const u32=(b,o)=>(b[o]|b[o+1]<<8|b[o+2]<<16|b[o+3]<<24)>>>0;
+  function dbgNote(t){ log.push("   "+t); const el=document.getElementById("usbLog"); if(el) el.textContent=log.join("\n"); }
+  function dbg(dir,b){
+    const lim=b.length<=80?80:40;   // short frames (like the chip-info reply) are logged in full
+    log.push(`${new Date().toLocaleTimeString("he-IL")} ${dir} ${hx(b.slice(0,lim))}${b.length>lim?` … (${b.length}B)`:""}`);
+    if(log.length>300) log.shift();
+    const el=document.getElementById("usbLog"); if(el) el.textContent=log.join("\n");
+  }
+  function chk(d){ let x=0; for(const v of d) x^=v; return [(~x)&0xff, x]; }
+  function frame(cmd,d){
+    const f=new Uint8Array(d.length+7);
+    f[0]=0x55; f[1]=cmd>>8&255; f[2]=cmd&255; f[3]=d.length>>8&255; f[4]=d.length&255; f.set(d,5);
+    const c=chk(d); f[d.length+5]=c[0]; f[d.length+6]=c[1]; return f;
+  }
+  function onReport(e){
+    rx.push(...new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength));
+    for(;;){
+      const s=rx.indexOf(0x55); if(s<0){ rx=[]; return; }
+      if(s>0) rx=rx.slice(s);
+      if(rx.length<7) return;
+      const len=rx[3]<<8|rx[4];
+      if(len>0x7fa){ rx.shift(); continue; }
+      if(rx.length<len+7) return;
+      const d=Uint8Array.from(rx.slice(5,5+len)), c=chk(d);
+      if(rx[len+5]!==c[0]||rx[len+6]!==c[1]){ rx.shift(); continue; }
+      const cmd=rx[1]<<8|rx[2];
+      dbg("◀", rx.slice(0,len+7)); rx=rx.slice(len+7); deliver(cmd,d);
+    }
+  }
+  function deliver(cmd,d){
+    if(cmd===0x85){ waiters.forEach(w=>w.prog(d)); return; }
+    const i=waiters.findIndex(w=>w.cmd===cmd); if(i<0) return;
+    const w=waiters.splice(i,1)[0]; w.stop(); w.res({final:d});
+  }
+  const STEP={0x51:"מעבר למצב שליטה מהמחשב",0x83:"זיהוי השבב",0x81:"קריאת השבב",0x82:"כתיבה לשבב"};
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  /* Send one command. Resolves with {final:data} when the device answers with the same command,
+     or {done:"progress"} when opts.onProg returns true, or {done:"idle"} when progress frames
+     stopped for opts.idle ms (the encoder streams 0x85 frames and may never send a final frame). */
+  function req(cmd,data,ms,opts={}){
+    return new Promise(async (res,rej)=>{
+      let t, seen=false;
+      const finish=v=>{ clearTimeout(t); waiters=waiters.filter(x=>x!==w); res(v); };
+      const w={cmd,res,rej,stop:()=>clearTimeout(t),
+        arm:()=>{ clearTimeout(t); t=setTimeout(()=>{
+          if(seen && opts.idle) return finish({done:"idle"});
+          waiters=waiters.filter(x=>x!==w);
+          rej(new Error(`המקודד לא ענה בשלב "${STEP[cmd]||cmd.toString(16)}". השאירו את השבב על המקודד ונסו שוב. אם זה חוזר, שלחו את יומן התקשורת מלשונית 'בדיקת מקודד'.`));
+        }, seen && opts.idle ? opts.idle : ms); },
+        prog:d=>{ seen=true; if(opts.onProg?.(d)) return finish({done:"progress"}); w.arm(); }};
+      w.arm(); waiters.push(w);
+      try{
+        const f=frame(cmd,data); dbg("▶", f);
+        // Send all packets back to back: the encoder drops a frame that is not complete within ~1 s.
+        const t0=performance.now();
+        for(let i=0;i<f.length;i+=64){ const r=new Uint8Array(64); r.set(f.subarray(i,i+64)); await dev.sendReport(0,r); }
+        if(f.length>64){ const ms=Math.round(performance.now()-t0); log.push(`   (נשלחו ${Math.ceil(f.length/64)} חבילות ב‑${ms} אלפיות שנייה)`); const el=document.getElementById("usbLog"); if(el) el.textContent=log.join("\n"); }
+      }catch(e){ w.stop(); waiters=waiters.filter(x=>x!==w); rej(new Error("שליחה למקודד נכשלה: "+e.message)); }
+    });
+  }
+  function changed(){ listeners.forEach(f=>f()); }
+  async function attach(d){
+    if(!d.opened) await d.open();
+    d.removeEventListener("inputreport", onReport); d.addEventListener("inputreport", onReport);
+    dev=d; rx=[]; changed();
+  }
+  if("hid" in navigator){
+    navigator.hid.addEventListener("disconnect", e=>{ if(e.device===dev){ dev=null; waiters.forEach(w=>{w.stop(); w.rej(new Error("המקודד נותק"));}); waiters=[]; changed(); } });
+    navigator.hid.addEventListener("connect", e=>{ if(!dev && e.device.vendorId===VID && e.device.productId===PID) attach(e.device).catch(()=>{}); });
+    navigator.hid.getDevices().then(ds=>{ const d=ds.find(x=>x.vendorId===VID&&x.productId===PID); if(d) return attach(d); }).catch(()=>{});
+  }
+
+  async function host(on){ const r=(await req(0x51, Uint8Array.of(on?1:0), 2000)).final; return !!r && r[0]===(on?1:0); }
+  async function session(fn){
+    if(busy) throw new Error("המקודד עסוק בפעולה אחרת");
+    busy=true;
+    try{ await host(true); return await fn(); }
+    finally{ try{ await host(false); }catch{} busy=false; }
+  }
+  function detectType(r){
+    for(let i=0;i+7<r.length;i++){
+      if(r[i]===0x00 && r[i+1]===0x04 && r[i+7]===0x03){
+        const prod=r[i+2], size=r[i+6];
+        if(prod===0x04 && size===0x0F) return 2;
+        if(prod===0x04 && size===0x11) return 3;
+        if(prod===0x04 && size===0x13) return 4;
+        if(prod===0x03 && size===0x0B) return 0;
+        if(prod===0x03 && size===0x0E) return 1;
+      }
+    }
+    return null;
+  }
+  async function info(allowAuthFail){
+    const p=new Uint8Array(18); p[0]=4; p[1]=1;            // 4 passwords, last block
+    new DataView(p.buffer).setUint32(2,0xFFFFFFFF,true);   // FFFFFFFF, then zeros (same order as the maker's app)
+    const r=(await req(0x83,p,5000)).final;
+    if(!r || r.length<8) throw new Error("תשובה קצרה מדי מהמקודד");
+    const st=u32(r,0);
+    if(st===1) throw new Error("לא זוהה שבב על המקודד. הניחו את השבב במרכז המקודד ונסו שוב. "+errText(st));
+    if(st!==0 && !(allowAuthFail && st===4)){
+      if(st===4) throw new Error("המקודד לא הצליח לאמת את השבב (קוד 4). ייתכן שהשבב מוגן בסיסמה או שאינו NTAG. שלחו את יומן התקשורת מלשונית 'בדיקת מקודד'.");
+      throw new Error("המקודד דיווח: "+errText(st));
+    }
+    const forced=$("#usbChip")?.value;
+    let type = forced && forced!=="auto" ? +forced
+             : (st===0 && r[4]<=4 && !r[5] && !r[6] && !r[7]) ? r[4]      // the encoder reports the chip type at byte 4
+             : detectType(r);
+    if(type==null){
+      if(allowAuthFail) type=2;   // unknown chip: assume NTAG213, the smallest NTAG, so nothing is written past its memory
+      else throw new Error("לא הצלחתי לזהות את סוג השבב. בחרו אותו ידנית בתיבה 'סוג שבב' למעלה.");
+    }
+    const pwd = (st===0 && r.length>=64) ? r.slice(56,64) : Uint8Array.of(255,255,255,255,0,0,0,0);
+    return {raw:r,type,pwd,status:st};
+  }
+  const userBytes=t=>(PAGES[t]-(t?9:8))*4;
+  const ERR=["השבב לא נבחר (לא זוהה או זז)","שגיאת פקודה לכרטיס מיוחד","אימות הסיסמה של השבב נכשל","שגיאה בכתיבת חתימה","שגיאה בבדיקת מספר השבב (UID)","סוג השבב לא מתאים"];
+  const errText=c=>{ const m=ERR.filter((_,i)=>c&(1<<i)); return (m.length?m.join(", "):"שגיאה לא מוכרת")+` (קוד ${c})`; };
+  const uidOf=mem=>hx([...mem.slice(0,3),...mem.slice(4,8)]).toUpperCase().replace(/ /g,":");
+
+  /* Read the whole chip. The encoder streams one 0x85 frame per page: [page, status(1=ok), 4 data bytes]. */
+  async function readMem(inf){
+    const n=PAGES[inf.type], mem=new Uint8Array(n*4), got=new Uint8Array(n);
+    let count=0;
+    const p=new Uint8Array(16); p.set(inf.pwd,0); p[8]=inf.type;
+    const r=await req(0x81,p,15000,{idle:3000,onProg:d=>{
+      if(d.length>=6 && d[0]<n){ if(!got[d[0]]){ got[d[0]]=1; count++; } if(d[1]===1) mem.set(d.slice(2,6),d[0]*4); else got[d[0]]=2; }
+      return count>=n;
+    }});
+    if(r.final && r.final.length>=4+n*4){               // a full final frame, if this firmware sends one
+      const st=u32(r.final,0); if(st!==0) throw new Error("הקריאה נכשלה: "+errText(st));
+      return r.final.slice(4,4+n*4);
+    }
+    const missing=[...got].filter(x=>x!==1).length;
+    if(missing>n-4) throw new Error("הקריאה לא הושלמה: התקבלו רק "+(n-missing)+" עמודים מתוך "+n+". השאירו את השבב על המקודד ונסו שוב.");
+    return mem;
+  }
+  function parseMem(mem){
+    let ndef=null;
+    for(let i=16;i<mem.length;){
+      const t=mem[i]; if(t===0){ i++; continue; } if(t===0xFE) break;
+      let l=mem[i+1], j=i+2; if(l===0xFF){ l=mem[i+2]<<8|mem[i+3]; j=i+4; }
+      if(t===0x03){ ndef=mem.slice(j,j+l); break; } i=j+l;
+    }
+    return ndef;
+  }
+  async function read(){
+    return session(async()=>{
+      const inf=await info(true);
+      const mem=await readMem(inf);
+      return {uid:uidOf(mem), type:NAMES[inf.type], capacity:userBytes(inf.type), readOnly:mem[15]!==0, ndef:parseMem(mem), cc:hx(mem.slice(12,16))};
+    });
+  }
+  async function write(ndefBytes, onProg){
+    return session(async()=>{
+      const inf=await info(true), t=inf.type;   // continue when the password check fails: compatible stickers have no password
+      const n=ndefBytes.length;
+      const tlv=[0x03, ...(n<255?[n]:[0xFF,n>>8,n&255]), ...ndefBytes, 0xFE];
+      if(tlv.length>userBytes(t)) throw new Error(`התוכן (${tlv.length} בתים) גדול מנפח השבב ${NAMES[t]} (${userBytes(t)} בתים).`);
+      const pageData=new Uint8Array(1024), pageState=new Uint8Array(256);
+      pageData.set(tlv,16);                                   // page 4 onward
+      const pages=Math.ceil((tlv.length+1)/4);
+      for(let i=0;i<pages;i++) pageState[4+i]=2;              // 2 = write this page (NTAG_PAGE_NEED_WRITE)
+      const np=PAGES[t];
+      let noAnswer=false;
+      /* The maker's Windows tool uses the short-frame protocol only when the info reply is 65 bytes long;
+         this encoder answers 64, so the single 1328-byte frame is the right one (mfu_wrtie_dump_t).
+         If the encoder stays silent with write type 1 (NDEF), retry once with type 2 (write card). */
+      const big=(wt,pwd)=>{ const p=new Uint8Array(0x530), dv=new DataView(p.buffer);
+        p.set(pwd||inf.pwd,0); dv.setInt32(8,t,true); dv.setInt32(12,wt,true); p.set(pageData,0x30); p.set(pageState,0x430); return p; };
+      const small=async()=>{
+        for(let i=0;i<np;){
+          const b=new Uint8Array(80), dv=new DataView(b.buffer);
+          b.set(inf.pwd,0); dv.setInt32(8,t,true); dv.setInt32(12,1,true);
+          let cnt;
+          if(i===0){ cnt=Math.min(4,np); b.set(pageData.subarray(0,cnt*4),50); b.set(pageState.subarray(0,cnt),66); }
+          else { cnt=Math.min(np-i,12); b.set(pageData.subarray(i*4,(i+cnt)*4),18); b.set(pageState.subarray(i,i+cnt),66); }
+          b[16]=i; b[17]=cnt;
+          const r=await req(0x82,b,6000,{onProg:d=>{ onProg?.(d); return false; }});
+          const st=r.final&&r.final.length>=4?u32(r.final,0):0;
+          if(st!==0) throw new Error("הכתיבה נכשלה: "+errText(st)+".");
+          i+=cnt;
+        }
+      };
+      if(inf.raw.length===65){ await small(); }
+      else {
+        let done=false;
+        const zero=new Uint8Array(8);
+        for(const [wt,pwd,label] of [[1,null,"סוג כתיבה 1"],[2,null,"סוג כתיבה 2"],[1,zero,"סוג כתיבה 1 בלי סיסמה"]]){
+          try{
+            dbgNote(`כתיבה בהודעה אחת, ${label}`);
+            const r=await req(0x82,big(wt,pwd),6000,{idle:3000,onProg:d=>{ onProg?.(d); return false; }});
+            if(r?.final && r.final.length>=4){ const st=u32(r.final,0); if(st!==0) throw new Error("הכתיבה נכשלה: "+errText(st)+"."); }
+            done=true; break;
+          }catch(e){ if(!/לא ענה/.test(e.message)) throw e; dbgNote(`אין תשובה (${label})`); }
+        }
+        if(!done){ noAnswer=true; dbgNote("המקודד לא אישר את הכתיבה. בודק בקריאה אם הנתונים נכתבו…"); }
+      }
+      // Verify: read the chip back and compare the written pages
+      const mem=await readMem(inf);
+      const expect=new Uint8Array(pages*4); expect.set(tlv);
+      for(let i=0;i<expect.length;i++){
+        if(mem[16+i]!==expect[i]){
+          if(noAnswer) throw new Error("המקודד קיבל את פקודת הכתיבה אבל לא ענה, והשבב לא השתנה. שלחו את יומן התקשורת מלשונית 'בדיקת מקודד'.");
+          throw new Error(`האימות נכשל: עמוד ${4+(i>>2)} בשבב שונה ממה שנשלח. השאירו את השבב על המקודד ונסו שוב, ואם זה חוזר שלחו את יומן התקשורת.`);
+        }
+      }
+      if(noAnswer) dbgNote("הקריאה החוזרת מאשרת: הנתונים נכתבו לשבב.");
+      return {uid:uidOf(mem), type:NAMES[t], pages};
+    });
+  }
+  /* Fast card check for the checkpoint: one info request; the reply carries pages 0-3 (UID) at byte 10. */
+  async function peek(){
+    if(busy || !dev) return undefined;
+    return session(async()=>{
+      const p=new Uint8Array(18); p[0]=4; p[1]=1; new DataView(p.buffer).setUint32(2,0xFFFFFFFF,true);
+      const r=(await req(0x83,p,3000)).final;
+      if(!r || r.length<18) return null;
+      const st=u32(r,0); if(st===1 || (st!==0 && st!==4)) return null;
+      const m=r.slice(10,18); if(m.every(x=>x===0)) return null;
+      return uidOf(m);
+    });
+  }
+  return {
+    get supported(){ return "hid" in navigator; },
+    get connected(){ return !!dev && dev.opened; },
+    get name(){ return dev?.productName||"TCC-TSY-TBY"; },
+    async connect(){ const ds=await navigator.hid.requestDevice({filters:[{vendorId:VID,productId:PID}]}); if(!ds.length) throw new Error("לא נבחר מקודד"); await attach(ds[0]); },
+    cancel(){ waiters.forEach(w=>{ w.stop(); w.rej(new Error("הפעולה בוטלה")); }); waiters=[]; },
+    onChange(f){ listeners.push(f); },
+    read, write, peek, log, get busy(){ return busy; },
+  };
+})();
+
+
+
+/* ---------------- data ---------------- */
+const KEY="gangway.v1";
+const now=()=>Date.now();
+function sample(){
+  const t=now(), h=3600e3;
+  const P=(id,first,last,cabin,type,status,ago,notes=[])=>({id,first,last,cabin,type,status,lastMove:t-ago*h,cardUid:"",notes,moves:[{ts:t-ago*h,dir:status}],example:true});
+  return {ship:"", pin:"999", seq:9, passengers:[
+    P("P0001","דנה","לוי","8214","אורח","on",1.2),
+    P("P0002","יוסי","כהן","8214","אורח","off",0.6,[{ts:t-26*h,text:"ניסה להעלות שישיית מים לאונייה. הוחרם בבידוק.",alert:true}]),
+    P("P0003","מאיה","פרץ","10532","אורח VIP","on",3.4),
+    P("P0004","אבי","מזרחי","6120","אורח","off",2.1),
+    P("P0005","Liam","O'Brien","9007","אורח","on",5.0,[{ts:t-4*h,text:"מבקש עזרה בעלייה בכבש (כיסא גלגלים).",alert:false}]),
+    P("P0006","נועה","שפירא","C-114","צוות","on",0.2),
+    P("P0007","Carlos","Mendes","C-208","צוות","off",1.0),
+    P("P0008","רונית","אברהם","7311","אורח","on",8.0),
+  ]};
+}
+let db;
+try{ db=JSON.parse(localStorage.getItem(KEY)); }catch{ db=null; }
+if(!db || !Array.isArray(db.passengers)) db=sample();
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(db)); }catch{ toast("לא ניתן לשמור בדפדפן הזה. הנתונים יאבדו בסגירת הדף."); } renderCounts(); }
+const fullName=p=>`${p.first} ${p.last}`.trim();
+const initials=p=>((p.first||"?")[0]+(p.last||"")[0]||"").toUpperCase();
+const byId=id=>db.passengers.find(p=>p.id===id);
+const byUid=uid=>db.passengers.find(p=>p.cardUid && p.cardUid===uid);
+const hasAlert=p=>p.notes.some(n=>n.alert);
+const fmtTime=ts=>ts?new Date(ts).toLocaleTimeString("he-IL",{hour:"2-digit",minute:"2-digit"}):"—";
+const fmtFull=ts=>ts?new Date(ts).toLocaleString("he-IL",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";
+function ago(ts){ if(!ts) return ""; const m=Math.round((now()-ts)/60000); if(m<1) return "עכשיו"; if(m<60) return `לפני ${m} דק'`; const h=Math.floor(m/60); if(h<24) return `לפני ${h} שע'`; return `לפני ${Math.floor(h/24)} ימים`; }
+const norm=s=>String(s||"").toLowerCase().replace(/[\s'"-]/g,"");
+function match(p,q){ q=norm(q); if(!q) return true; return norm(fullName(p)).includes(q)||norm(p.last+p.first).includes(q)||norm(p.cabin).includes(q); }
+const statusPill=p=>p.status==="on"?`<span class="pill on">על הסיפון</span>`:`<span class="pill off">ביבשה</span>`;
+function sortByName(a,b){ return fullName(a).localeCompare(fullName(b),"he"); }
+function exampleBanner(){
+  if(!db.passengers.some(p=>p.example)) return "";
+  return `<div class="example">הרשימה כוללת נוסעים לדוגמה. <button class="btn sm" type="button" data-act="clear-examples">הסרת הדוגמאות</button></div>`;
+}
+document.addEventListener("click",e=>{ if(e.target.closest('[data-act="clear-examples"]')){ db.passengers=db.passengers.filter(p=>!p.example); save(); renderAll(); toast("הדוגמאות הוסרו"); } });
+
+function move(p,dir,source){
+  p.status=dir; p.lastMove=now(); p.moves.unshift({ts:p.lastMove,dir,source}); p.moves=p.moves.slice(0,200); delete p.example; save();
+}
+
+/* ---------------- clock, counts ---------------- */
+function tick(){ const d=new Date(); $("#clock").firstChild.nodeValue=d.toLocaleTimeString("he-IL",{hour:"2-digit",minute:"2-digit",second:"2-digit"}); $("#date").textContent=d.toLocaleDateString("he-IL",{weekday:"long",day:"numeric",month:"long"}); }
+setInterval(tick,1000); tick();
+function renderCounts(){
+  const on=db.passengers.filter(p=>p.status==="on").length, off=db.passengers.length-on;
+  $("#cOn").textContent=on; $("#cOff").textContent=off;
+  $("#shipName").textContent=db.ship||"הגדירו שם אונייה בעמוד הקידוד";
+}
+
+/* ---------------- routing ---------------- */
+const MODES=["gangway","onboard","search","encode"];
+let mode="gangway";
+function route(){
+  const h=location.hash.slice(1); mode=MODES.includes(h)?h:"gangway";
+  MODES.forEach(m=>{ $("#v-"+m).hidden=m!==mode; });
+  $$("nav.modes a").forEach(a=>a.toggleAttribute("aria-current",false)); $(`nav.modes a[data-mode="${mode}"]`).setAttribute("aria-current","page");
+  if(mode!=="encode") lock(false);
+  renderAll();
+  if(mode==="gangway") setTimeout(()=>$("#gwSearch")?.blur(),0);
+}
+window.addEventListener("hashchange",route);
+function go(m){ if(location.hash!=="#"+m) location.hash=m; else route(); }
+
+/* ---------------- reader (USB encoder or phone NFC) ---------------- */
+const hasWebNFC="NDEFReader" in window;
+function renderReader(){
+  const r=$("#reader");
+  if(usb.connected){ r.classList.add("ok"); $("#readerText").textContent="קורא USB מחובר"; $("#readerConnect").hidden=true; }
+  else if(hasWebNFC){ r.classList.add("ok"); $("#readerText").textContent="NFC של הטלפון"; $("#readerConnect").hidden=true; }
+  else { r.classList.remove("ok"); $("#readerText").textContent=usb.supported?"קורא לא מחובר":"הדפדפן לא תומך בקורא USB. השתמשו ב‑Chrome או Edge"; $("#readerConnect").hidden=!usb.supported; }
+}
+$("#readerConnect").onclick=async()=>{ try{ await usb.connect(); toast("הקורא מחובר ✓"); }catch(e){ if(e.name!=="NotFoundError") toast(e.message); } };
+usb.onChange(()=>{ renderReader(); });
+
+let lastUid=null, lastUidAt=0, polling=false, encoding=false;
+async function pollLoop(){
+  if(polling) return; polling=true;
+  while(true){
+    await new Promise(r=>setTimeout(r,650));
+    if(mode!=="gangway" || encoding || document.hidden || !usb.connected || usb.busy) { if(mode!=="gangway") lastUid=null; continue; }   // a hidden tab stops polling so another page can use the reader
+    try{
+      const uid=await usb.peek();
+      if(uid===undefined) continue;
+      if(uid===null){ lastUid=null; continue; }            // card lifted: next tap of the same card counts again
+      if(uid===lastUid) continue;                           // same card still on the reader
+      lastUid=uid; lastUidAt=now(); onCard(uid);
+    }catch{ /* reader hiccup: keep polling */ }
+  }
+}
+pollLoop();
+if(hasWebNFC){
+  // Android: phone NFC acts as the reader. Scanning starts after the first tap on the page (browser rule).
+  let started=false;
+  document.addEventListener("click",async()=>{ if(started) return; started=true;
+    try{ const r=new NDEFReader(); await r.scan();
+      r.onreading=e=>{ if(mode!=="gangway"||encoding) return; const uid=(e.serialNumber||"").toUpperCase();
+        if(uid===lastUid && now()-lastUidAt<4000) return; lastUid=uid; lastUidAt=now(); onCard(uid); };
+    }catch{}
+  });
+}
+
+/* ---------------- checkpoint ---------------- */
+let dirMode="auto", current=null, idleTimer=null;
+$$(".dirsel button").forEach(b=>b.onclick=()=>{ dirMode=b.dataset.dir; $$(".dirsel button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
+function idleStage(){
+  current=null;
+  $("#stage").innerHTML=`<div class="idle">
+    <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 9a3 3 0 0 1 6 0M10.5 11a1.5 1.5 0 0 1 3 0"/><path d="M9 16h6"/></svg></div>
+    <h2>הניחו כרטיס על הקורא</h2>
+    <p class="muted" style="margin:0">${usb.connected||hasWebNFC?"הקורא מוכן":"חברו את קורא ה‑USB מהתפריט בצד, או השתמשו בבידוק ידני"}</p>
+    ${exampleBanner()}
+  </div>`;
+}
+function onCard(uid){
+  const p=byUid(uid);
+  if(!p){ showUnknown(uid); return; }
+  processPax(p,"כרטיס");
+}
+function processPax(p,source){
+  const dir = dirMode==="auto" ? (p.status==="on"?"off":"on") : dirMode;
+  const prev={status:p.status,lastMove:p.lastMove};
+  if(dirMode!=="auto" && p.status===dir){ showPax(p,null,`כבר רשום ${dir==="on"?"על הסיפון":"ביבשה"}`); return; }
+  move(p,dir,source);
+  showPax(p,{dir,prev});
+  renderFeed(); renderCounts();
+}
+function showUnknown(uid){
+  clearTimeout(idleTimer);
+  $("#stage").innerHTML=`<div class="verdict unknown"><div><div class="big">כרטיס לא מוכר</div><div class="muted">הכרטיס לא מקושר לאף נוסע. מספר כרטיס: <span class="mono">${esc(uid)}</span></div></div></div>
+    <div class="row"><button class="btn" type="button" id="toIdle">חזרה</button><a class="btn" href="#encode">קישור הכרטיס לנוסע (דורש קוד)</a></div>`;
+  $("#toIdle").onclick=idleStage;
+  try{ new AudioContext && beep(220,0.35); }catch{}
+  idleTimer=setTimeout(idleStage,12000);
+}
+function showPax(p,mv,info){
+  clearTimeout(idleTimer); current=p;
+  const alerts=p.notes.filter(n=>n.alert);
+  const v = mv ? (mv.dir==="on"
+      ? `<div class="verdict on"><div><div class="big">עלייה לאונייה</div><div class="muted">ברוכים השבים${p.cabin?` · תא ${esc(p.cabin)}`:""}</div></div><div class="time">${fmtTime(p.lastMove)}</div></div>`
+      : `<div class="verdict off"><div><div class="big">ירידה מהאונייה</div><div class="muted">נרשמה יציאה לחוף</div></div><div class="time">${fmtTime(p.lastMove)}</div></div>`)
+    : `<div class="verdict ${p.status}"><div><div class="big">${esc(info||"")}</div><div class="muted">לא נרשמה תנועה</div></div></div>`;
+  $("#stage").innerHTML=`${v}
+    <div class="who"><div class="avatar">${esc(initials(p))}</div>
+      <div><h2>${esc(fullName(p))}</h2><div class="muted">${esc(p.type)}${p.cabin?` · תא ${esc(p.cabin)}`:""} · ${statusPill(p)}</div></div></div>
+    ${alerts.length?`<div class="alerts"><b>⚠ שימו לב</b>${alerts.map(n=>`<div>${esc(n.text)} <small class="muted">· ${fmtFull(n.ts)}</small></div>`).join("")}</div>`:""}
+    <form class="row" id="gwNoteForm" autocomplete="off">
+      <input type="text" id="gwNote" placeholder="הוספת הערה, למשל: ניסה להבריח מים" style="flex:1;min-width:200px">
+      <label class="row" style="gap:6px;font-size:.9rem"><input type="checkbox" id="gwNoteAlert"> סימון כהתראה</label>
+      <button class="btn primary" type="submit">הוספה</button>
+    </form>
+    ${p.notes.length?`<ul class="notes">${p.notes.slice(0,4).map(n=>`<li class="${n.alert?"alert":""}"><div class="txt">${esc(n.text)}<small>${fmtFull(n.ts)}</small></div>${n.alert?'<span class="pill alert">התראה</span>':""}</li>`).join("")}</ul>`:""}
+    <div class="row">
+      ${mv?`<button class="btn" type="button" id="undoMove">ביטול התנועה</button>`:""}
+      <button class="btn" type="button" id="openPax">לכרטיס הנוסע</button>
+      <button class="btn" type="button" id="toIdle">סיום</button>
+    </div>`;
+  if(alerts.length){ try{ beep(330,0.25); setTimeout(()=>beep(330,0.25),300); }catch{} } else { try{ beep(880,0.12); }catch{} }
+  $("#gwNoteForm").onsubmit=e=>{ e.preventDefault(); const t=$("#gwNote").value.trim(); if(!t) return;
+    p.notes.unshift({ts:now(),text:t,alert:$("#gwNoteAlert").checked}); delete p.example; save(); toast("ההערה נשמרה"); showPax(p,mv,info); };
+  $("#gwNote").addEventListener("input",()=>clearTimeout(idleTimer));
+  if(mv) $("#undoMove").onclick=()=>{ p.status=mv.prev.status; p.lastMove=mv.prev.lastMove; p.moves.shift(); save(); renderFeed(); toast("התנועה בוטלה"); idleStage(); };
+  $("#openPax").onclick=()=>{ selected=p.id; go("search"); };
+  $("#toIdle").onclick=idleStage;
+  idleTimer=setTimeout(()=>{ if(document.activeElement?.id!=="gwNote") idleStage(); },alerts.length?30000:9000);
+}
+let actx=null;
+function beep(f,d){ actx=actx||new AudioContext(); const o=actx.createOscillator(), g=actx.createGain(); o.frequency.value=f; o.connect(g); g.connect(actx.destination); g.gain.setValueAtTime(.15,actx.currentTime); g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+d); o.start(); o.stop(actx.currentTime+d); }
+function renderFeed(){
+  const all=[]; db.passengers.forEach(p=>p.moves.slice(0,5).forEach(m=>all.push({p,m})));
+  all.sort((a,b)=>b.m.ts-a.m.ts);
+  $("#feed").innerHTML = all.length ? all.slice(0,10).map(({p,m})=>`<li><span class="pill ${m.dir}">${m.dir==="on"?"עלה":"ירד"}</span><span class="nm">${esc(fullName(p))}</span>${hasAlert(p)?'<span class="pill alert">!</span>':""}<span class="t">${fmtTime(m.ts)}</span></li>`).join("")
+    : `<li class="empty" style="display:block">עדיין אין תנועות</li>`;
+}
+$("#gwSearch").addEventListener("input",renderGwResults);
+function renderGwResults(){
+  const q=$("#gwSearch").value.trim();
+  if(!q){ $("#gwResults").innerHTML=""; return; }
+  const list=db.passengers.filter(p=>match(p,q)).sort(sortByName).slice(0,8);
+  $("#gwResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`תא ${esc(p.cabin)} · `:""}${p.status==="on"?"על הסיפון":"ביבשה"}</small></div>${hasAlert(p)?'<span class="pill alert">!</span>':""}</button></li>`).join("")
+    : `<li class="empty">לא נמצא</li>`;
+}
+$("#gwResults").addEventListener("click",e=>{ const b=e.target.closest("button[data-id]"); if(!b) return; const p=byId(b.dataset.id);
+  $("#gwSearch").value=""; renderGwResults(); processPax(p,"ידני"); });
+
+/* ---------------- onboard / ashore ---------------- */
+let obFilter="all";
+$("#obFilter").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; obFilter=b.dataset.f; $$("#obFilter button").forEach(x=>x.setAttribute("aria-pressed",x===b)); renderOnboard(); });
+$("#obSearch").addEventListener("input",renderOnboard);
+function renderOnboard(){
+  const on=db.passengers.filter(p=>p.status==="on").length;
+  $("#tOn").textContent=on; $("#tOff").textContent=db.passengers.length-on; $("#tAll").textContent=db.passengers.length;
+  const q=$("#obSearch").value.trim();
+  const list=db.passengers.filter(p=>match(p,q) && (obFilter==="all" || (obFilter==="alert"?hasAlert(p):p.status===obFilter))).sort(sortByName);
+  $("#obBody").innerHTML = list.length ? list.map(p=>`<tr data-id="${p.id}">
+      <td><b>${esc(fullName(p))}</b></td><td>${esc(p.cabin||"—")}</td><td class="muted">${esc(p.type)}</td>
+      <td>${statusPill(p)}</td>
+      <td>${p.status==="on"?"עלה":"ירד"} ב‑<span class="mono">${fmtFull(p.lastMove)}</span> <small class="muted">${ago(p.lastMove)}</small></td>
+      <td>${p.notes.length?(hasAlert(p)?`<span class="pill alert">${p.notes.length} · התראה</span>`:`<span class="muted">${p.notes.length}</span>`):'<span class="muted">—</span>'}</td></tr>`).join("")
+    : `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">אין תוצאות</td></tr>`;
+}
+$("#obBody").addEventListener("click",e=>{ const tr=e.target.closest("tr[data-id]"); if(!tr) return; selected=tr.dataset.id; go("search"); });
+
+/* ---------------- search ---------------- */
+let selected=null;
+$("#sSearch").addEventListener("input",renderSearch);
+function renderSearch(){
+  const q=$("#sSearch").value.trim();
+  const list=db.passengers.filter(p=>match(p,q)).sort(sortByName);
+  $("#sResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}" aria-current="${p.id===selected}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`תא ${esc(p.cabin)} · `:""}${esc(p.type)}</small></div>${statusPill(p)}</button></li>`).join("")
+    : `<li class="empty">לא נמצאו נוסעים</li>`;
+  renderDetail();
+}
+$("#sResults").addEventListener("click",e=>{ const b=e.target.closest("button[data-id]"); if(!b) return; selected=b.dataset.id; renderSearch(); });
+function renderDetail(){
+  const p=selected&&byId(selected);
+  if(!p){ $("#sDetail").innerHTML=`<div class="empty">בחרו נוסע מהרשימה</div>${exampleBanner()}`; return; }
+  $("#sDetail").innerHTML=`
+    <div class="who"><div class="avatar">${esc(initials(p))}</div><div><h2>${esc(fullName(p))}</h2><div class="muted">${esc(p.type)} · ${statusPill(p)}</div></div></div>
+    <dl class="kv">
+      <dt>תא</dt><dd>${esc(p.cabin||"—")}</dd>
+      <dt>תנועה אחרונה</dt><dd>${p.status==="on"?"עלייה":"ירידה"} · <span class="mono">${fmtFull(p.lastMove)}</span> <small class="muted">${ago(p.lastMove)}</small></dd>
+      <dt>כרטיס</dt><dd>${p.cardUid?`<span class="mono">${esc(p.cardUid)}</span>`:'<span class="muted">לא קודד כרטיס</span>'}</dd>
+      <dt>מזהה</dt><dd class="mono">${esc(p.id)}</dd>
+    </dl>
+    <div class="row">
+      <button class="btn" type="button" id="dMove">${p.status==="on"?"רישום ירידה ידני":"רישום עלייה ידני"}</button>
+    </div>
+    <h3>הערות</h3>
+    <form class="row" id="dNoteForm" autocomplete="off">
+      <input type="text" id="dNote" placeholder="הערה חדשה" style="flex:1;min-width:200px">
+      <label class="row" style="gap:6px;font-size:.9rem"><input type="checkbox" id="dNoteAlert"> התראה</label>
+      <button class="btn primary" type="submit">הוספה</button>
+    </form>
+    ${p.notes.length?`<ul class="notes">${p.notes.map((n,i)=>`<li class="${n.alert?"alert":""}"><div class="txt">${esc(n.text)}<small>${fmtFull(n.ts)}</small></div>${n.alert?'<span class="pill alert">התראה</span>':""}<button class="btn sm" type="button" data-del="${i}" aria-label="מחיקת הערה">✕</button></li>`).join("")}</ul>`:'<p class="muted" style="margin:0">אין הערות</p>'}
+    <h3>היסטוריית תנועות</h3>
+    <ul class="hist">${p.moves.map(m=>`<li><span class="t">${fmtFull(m.ts)}</span><span>${m.dir==="on"?"עלייה לאונייה":"ירידה מהאונייה"}</span>${m.source?`<small class="muted">· ${esc(m.source)}</small>`:""}</li>`).join("")||'<li class="muted">אין תנועות</li>'}</ul>`;
+  $("#dMove").onclick=()=>{ move(p,p.status==="on"?"off":"on","ידני"); toast("נרשם"); renderSearch(); };
+  $("#dNoteForm").onsubmit=e=>{ e.preventDefault(); const t=$("#dNote").value.trim(); if(!t) return; p.notes.unshift({ts:now(),text:t,alert:$("#dNoteAlert").checked}); delete p.example; save(); renderDetail(); toast("ההערה נשמרה"); };
+  $("#sDetail").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ p.notes.splice(+b.dataset.del,1); save(); renderDetail(); });
+}
+
+/* ---------------- encode (PIN) ---------------- */
+let unlocked=false, pinBuf="", lockTimer=null;
+$("#pinPad").innerHTML=[1,2,3,4,5,6,7,8,9,"נקה",0,"⌫"].map(k=>`<button type="button" data-k="${k}">${k}</button>`).join("");
+function renderPin(){
+  const len=Math.max(3,(db.pin||"999").length);
+  $("#pinDots").innerHTML=Array.from({length:len},(_,i)=>`<i class="${i<pinBuf.length?"f":""}"></i>`).join("");
+}
+function tryPin(){
+  if(pinBuf===(db.pin||"999")){ pinBuf=""; $("#pinErr").textContent=""; lock(true); return; }
+  if(pinBuf.length>=(db.pin||"999").length){ $("#pinErr").textContent="קוד שגוי"; const b=$("#pinBox"); b.classList.remove("shake"); void b.offsetWidth; b.classList.add("shake"); pinBuf=""; }
+  renderPin();
+}
+$("#pinPad").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; const k=b.dataset.k;
+  if(k==="נקה") pinBuf=""; else if(k==="⌫") pinBuf=pinBuf.slice(0,-1); else if(pinBuf.length<8) pinBuf+=k;
+  $("#pinErr").textContent=""; renderPin(); tryPin(); });
+document.addEventListener("keydown",e=>{ if(mode!=="encode"||unlocked) return;
+  if(/^\d$/.test(e.key)){ pinBuf+=e.key; renderPin(); tryPin(); } else if(e.key==="Backspace"){ pinBuf=pinBuf.slice(0,-1); renderPin(); } });
+function lock(open){
+  unlocked=open; $("#pinBox").hidden=open; $("#encBody").hidden=!open; $("#lockBadge").textContent=open?"🔓":"🔒";
+  clearTimeout(lockTimer); if(open){ armLock(); renderEncode(); } else { pinBuf=""; renderPin(); }
+}
+function armLock(){ clearTimeout(lockTimer); lockTimer=setTimeout(()=>{ if(unlocked){ lock(false); toast("עמוד הקידוד ננעל אחרי 3 דקות ללא פעילות"); } },180000); }
+document.addEventListener("pointerdown",()=>{ if(unlocked) armLock(); });
+$("#lockBtn").onclick=()=>lock(false);
+
+let editId=null;
+$("#eSearch").addEventListener("input",renderEncode);
+function renderEncode(){
+  const q=$("#eSearch").value.trim();
+  const list=db.passengers.filter(p=>match(p,q)).sort(sortByName);
+  $("#eResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}" aria-current="${p.id===editId}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`תא ${esc(p.cabin)} · `:""}${p.cardUid?"כרטיס מקודד":"ללא כרטיס"}</small></div></button></li>`).join("")
+    : `<li class="empty">לא נמצאו נוסעים</li>`;
+  const p=editId&&byId(editId);
+  $("#formTitle").textContent=p?`עריכה: ${fullName(p)}`:"נוסע חדש";
+  $("#fFirst").value=p?.first||""; $("#fLast").value=p?.last||""; $("#fCabin").value=p?.cabin||""; $("#fType").value=p?.type||"אורח";
+  $("#delBtn").hidden=!p;
+  $("#cardInfo").innerHTML=p?(p.cardUid?`כרטיס מקושר: <span class="mono">${esc(p.cardUid)}</span>. קישור כרטיס אחר יחליף אותו.`:"לנוסע הזה עדיין אין כרטיס."):"מלאו פרטים, הניחו כרטיס על הקורא ולחצו \"קישור כרטיס\": הנוסע יישמר והכרטיס יקושר אליו.";
+  $("#shipInput").value=db.ship||""; $("#pinInput").value="";
+  $("#usbLog").textContent=usb.log.length?usb.log.join("\n"):"אין עדיין תקשורת.";
+}
+$("#eResults").addEventListener("click",e=>{ const b=e.target.closest("button[data-id]"); if(!b) return; editId=b.dataset.id; renderEncode(); });
+$("#newPax").onclick=()=>{ editId=null; renderEncode(); $("#fFirst").focus(); };
+function upsert(){
+  const first=$("#fFirst").value.trim(), last=$("#fLast").value.trim();
+  if(!first||!last){ toast("צריך שם פרטי ושם משפחה"); return null; }
+  let p=editId&&byId(editId);
+  if(!p){ db.seq=(db.seq||0)+1; p={id:"P"+String(db.seq).padStart(4,"0"),status:"on",lastMove:now(),cardUid:"",notes:[],moves:[{ts:now(),dir:"on",source:"רישום"}]}; db.passengers.push(p); editId=p.id; }
+  Object.assign(p,{first,last,cabin:$("#fCabin").value.trim(),type:$("#fType").value}); delete p.example;
+  save(); return p;
+}
+$("#paxForm").onsubmit=e=>{ e.preventDefault(); if(upsert()){ toast("נשמר"); renderEncode(); } };
+$("#delBtn").onclick=()=>{
+  const p=byId(editId); if(!p) return;
+  $("#cardInfo").innerHTML=`<span style="color:var(--alert)">למחוק את ${esc(fullName(p))} וכל ההיסטוריה שלו?</span> <button class="btn sm danger" type="button" id="delYes">מחיקה</button> <button class="btn sm" type="button" id="delNo">ביטול</button>`;
+  $("#delYes").onclick=()=>{ db.passengers=db.passengers.filter(x=>x!==p); editId=null; save(); renderEncode(); toast("הנוסע נמחק"); };
+  $("#delNo").onclick=renderEncode;
+};
+/* NDEF text record "PAX:<id>" so a phone can also read who the card belongs to */
+function textRecord(t){ const enc=new TextEncoder(), lang=enc.encode("en"), body=enc.encode(t);
+  const payload=new Uint8Array(1+lang.length+body.length); payload[0]=lang.length; payload.set(lang,1); payload.set(body,1+lang.length);
+  return new Uint8Array([0xD1,0x01,payload.length,0x54,...payload]); }
+$("#encodeBtn").onclick=async()=>{
+  const p=upsert(); if(!p) return;
+  if(!usb.connected && !hasWebNFC) return toast("חברו את קורא ה‑USB מהתפריט בצד");
+  const b=$("#encodeBtn"); b.disabled=true; b.textContent="מקשר… השאירו את הכרטיס על הקורא";
+  encoding=true;
+  try{
+    let uid;
+    const rec=textRecord(`PAX:${p.id}`);
+    if(usb.connected){
+      // The checkpoint identifies cards by their serial number, so linking only needs a read.
+      // (This encoder model reads every NTAG sticker but does not write to all of them.)
+      uid=await usb.peek();
+      if(uid===undefined){ await new Promise(r=>setTimeout(r,800)); uid=await usb.peek(); }
+      if(!uid) throw new Error("לא זוהה כרטיס על הקורא. הניחו את הכרטיס במרכז הקורא ונסו שוב.");
+    }
+    else {
+      const r=new NDEFReader(); const ac=new AbortController();
+      uid=await new Promise((res,rej)=>{ r.onreading=e=>res((e.serialNumber||"").toUpperCase()); r.scan({signal:ac.signal}).catch(rej); });
+      ac.abort(); await new NDEFReader().write({records:[{recordType:"text",lang:"en",data:`PAX:${p.id}`}]});
+    }
+    const other=byUid(uid);
+    if(other && other!==p){ other.cardUid=""; toast(`הכרטיס הועבר מ‑${fullName(other)} ל‑${fullName(p)}`); }
+    else toast(`הכרטיס קושר ל‑${fullName(p)} ✓`);
+    p.cardUid=uid; save(); renderEncode();
+  }catch(e){ toast(e.message||String(e)); }
+  finally{ encoding=false; b.disabled=false; b.textContent="קישור כרטיס"; }
+};
+$("#saveSettings").onclick=()=>{
+  db.ship=$("#shipInput").value.trim();
+  const np=$("#pinInput").value.trim();
+  if(np){ if(!/^\d{3,8}$/.test(np)) return toast("הקוד צריך להיות 3 עד 8 ספרות"); db.pin=np; }
+  save(); toast(np?"ההגדרות והקוד החדש נשמרו":"ההגדרות נשמרו"); renderEncode();
+};
+$("#exportBtn").onclick=()=>{
+  const blob=new Blob([JSON.stringify(db,null,1)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=`gangway-backup-${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000); toast("קובץ הגיבוי נשמר בתיקיית ההורדות");
+};
+$("#importFile").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{ const d=JSON.parse(await f.text()); if(!Array.isArray(d.passengers)) throw 0; db=d; save(); renderAll(); toast(`שוחזרו ${d.passengers.length} נוסעים`); }
+  catch{ toast("הקובץ לא נראה כמו גיבוי של המערכת"); }
+  e.target.value="";
+};
+function bindWipe(){
+  $("#wipeRow").innerHTML=`<button class="btn danger" id="wipeAsk" type="button">מחיקת כל הנתונים</button>`;
+  $("#wipeAsk").onclick=()=>{
+    $("#wipeRow").innerHTML=`<span style="color:var(--alert)">למחוק את כל הנוסעים, ההיסטוריה וההערות?</span> <button class="btn danger" id="wipeYes" type="button">מחיקה</button> <button class="btn" id="wipeNo" type="button">ביטול</button>`;
+    $("#wipeYes").onclick=()=>{ const pin=db.pin, ship=db.ship; db={ship,pin,seq:0,passengers:[]}; save(); bindWipe(); renderAll(); toast("כל הנתונים נמחקו"); };
+    $("#wipeNo").onclick=bindWipe;
+  };
+}
+bindWipe();
+
+/* ---------------- render ---------------- */
+function renderAll(){
+  renderCounts(); renderReader();
+  if(mode==="gangway"){ if(!current) idleStage(); renderFeed(); renderGwResults(); }
+  if(mode==="onboard") renderOnboard();
+  if(mode==="search") renderSearch();
+  if(mode==="encode" && unlocked) renderEncode();
+}
+setInterval(()=>{ if(mode==="onboard") renderOnboard(); },30000);
+renderPin(); route();
+})();
+</script>
+</body>
+</html>
