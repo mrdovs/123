@@ -240,7 +240,7 @@ small.note{color:var(--muted);font-size:.8rem}
     <div class="row" style="justify-content:space-between"><b>הדוח</b><button class="btn sm" id="bCopy" type="button">העתקת הדוח</button></div>
     <pre class="hex" id="tout" style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;word-break:break-word;min-height:120px;max-height:420px"></pre>
     <p style="margin:0;color:var(--muted);font-size:.85rem">בסיום, לחצו "העתקת הדוח" והדביקו אותו בשיחה עם Claude.</p>
-    <div class="row" style="justify-content:space-between;margin-top:6px"><b>יומן תקשורת עם המקודד</b><button class="btn sm" id="exp6aBtn" type="button">ניסוי כתיבה בדרך אחרת (0x6a)</button> <button class="btn sm" id="fmtBtn" type="button">פירמוט מדבקה (בדיקת כתיבה)</button> <button class="btn sm" id="probeBtn" type="button">בדיקת אורך הודעה (עם מדבקה על המקודד, לא כותב כלום)</button> <button class="btn sm" id="usbLogCopy" type="button">העתקת היומן</button></div>
+    <div class="row" style="justify-content:space-between;margin-top:6px"><b>יומן תקשורת עם המקודד</b><button class="btn sm" id="exp53Btn" type="button">ניסוי הרשאה 0x53 + כתיבה</button> <button class="btn sm" id="exp6aBtn" type="button">ניסוי כתיבה בדרך אחרת (0x6a)</button> <button class="btn sm" id="fmtBtn" type="button">פירמוט מדבקה (בדיקת כתיבה)</button> <button class="btn sm" id="probeBtn" type="button">בדיקת אורך הודעה (עם מדבקה על המקודד, לא כותב כלום)</button> <button class="btn sm" id="usbLogCopy" type="button">העתקת היומן</button></div>
     <pre class="hex" id="usbLog" style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;word-break:break-word;min-height:80px;max-height:320px">אין עדיין תקשורת. אחרי כתיבה או קריאה יופיעו כאן הפקודות והתשובות.</pre>
     <div style="border-top:1px solid var(--line);margin-top:6px;padding-top:14px;display:flex;flex-direction:column;gap:12px" id="fwPanel">
       <h2>קושחת המקודד</h2>
@@ -612,6 +612,34 @@ const usb = (()=>{
       return {ok:p4==="03 00 fe 00", lines:out};
     });
   }
+  /* Experiment: the maker's app sends a device-authorization frame 0x53 derived from the device uuid
+     ( value = uuid*0xCC - 0x21DBE94B, little-endian u32, then byte 0x03 ). On this device the 0x54 reply
+     has no uuid (17 bytes), so uuid defaults to 0. After the auth we try a normal write of page 4 only
+     (03 00 FE 00, a valid empty NDEF) and read it back. Nothing in the device's permanent settings is touched. */
+  async function exp53(){
+    if(busy) throw new Error("המקודד עסוק בפעולה אחרת");
+    busy=true;
+    try{
+      await host(true);
+      let uuid=0;
+      try{ const v=(await req(0x54,[0x00],2500)).final; if(v&&v.length>=24) uuid=u32(v,20); dbgNote("0x54 (גרסה) → "+(v?hx(v):"-")); }catch(e){ dbgNote("0x54 → "+e.message); }
+      const auth=((Math.imul(uuid,0xCC) - 0x21DBE94B)>>>0);
+      const p=new Uint8Array(8), dv=new DataView(p.buffer); dv.setUint32(0,auth,true); p[4]=0x03;
+      try{ const r=(await req(0x53,p,3000)).final; dbgNote("0x53 הרשאה ("+auth.toString(16)+") → "+(r?hx(r):"אין תשובה")); }
+      catch(e){ dbgNote("0x53 → "+e.message); }
+      const inf=await info(true), t=inf.type;
+      const pageData=new Uint8Array(1024), pageState=new Uint8Array(256);
+      pageData.set([0x03,0x00,0xFE,0x00],16); pageState[4]=2;
+      const big=new Uint8Array(0x530), bv=new DataView(big.buffer);
+      big.set(inf.pwd,0); bv.setInt32(8,t,true); bv.setInt32(12,1,true); big.set(pageData,0x30); big.set(pageState,0x430);
+      try{ const w=await req(0x82,big,7000,{idle:3000,onProg:()=>false}); if(w&&w.final&&w.final.length>=4) dbgNote("0x82 כתיבה → סטטוס "+u32(w.final,0)); }
+      catch(e){ dbgNote("0x82 → "+e.message); }
+      const mem=await readMem(inf);
+      const p4=hx(mem.slice(16,20));
+      dbgNote("עמוד 4 אחרי הניסוי = "+p4+(p4==="03 00 fe 00"?"  ← נכתב!":"  (לא השתנה)"));
+      return {ok:p4==="03 00 fe 00", auth:auth.toString(16)};
+    } finally{ try{ await host(false); }catch{} busy=false; }
+  }
   /* Format (0x84, payload = 8-byte password): the encoder resets the NDEF area by itself. Used as a write test. */
   async function format(){
     return session(async()=>{
@@ -652,7 +680,7 @@ const usb = (()=>{
     async connect(){ const ds=await navigator.hid.requestDevice({filters:[{vendorId:VID,productId:PID}]}); if(!ds.length) throw new Error("לא נבחר מקודד"); await attach(ds[0]); },
     cancel(){ waiters.forEach(w=>{ w.stop(); w.rej(new Error("הפעולה בוטלה")); }); waiters=[]; },
     onChange(f){ listeners.push(f); },
-    read, write, probe, format, exp6a, fwParse, fwVersion, fwUpdate, log,
+    read, write, probe, format, exp6a, exp53, fwParse, fwVersion, fwUpdate, log,
   };
 })();
 
@@ -1255,6 +1283,13 @@ $("#diagBtn").addEventListener("click", async ()=>{
 $("#diagCopy").addEventListener("click", async ()=>{
   try{ await navigator.clipboard.writeText($("#diagOut").textContent); toast("הדוח הועתק"); }
   catch{ const r=document.createRange(); r.selectNodeContents($("#diagOut")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("סמנו והעתיקו ידנית"); }
+});
+$("#exp53Btn").addEventListener("click", async ()=>{
+  if(!usb.connected) return toast("חברו קודם את המקודד");
+  const btn=$("#exp53Btn"); btn.disabled=true; btn.textContent="מנסה… (עד 20 שניות)";
+  try{ const r=await usb.exp53(); toast(r.ok?"הצליח! עמוד 4 נכתב אחרי הרשאת 0x53. שלחו את היומן.":"עמוד 4 לא השתנה. העתיקו את היומן ושלחו אותו."); }
+  catch(e){ toast(e.message); }
+  finally{ btn.disabled=false; btn.textContent="ניסוי הרשאה 0x53 + כתיבה"; }
 });
 $("#exp6aBtn").addEventListener("click", async ()=>{
   if(!usb.connected) return toast("חברו קודם את המקודד");
