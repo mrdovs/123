@@ -257,7 +257,7 @@ small.note{color:var(--muted);font-size:.8rem}
     <div class="row" style="justify-content:space-between"><b>הדוח</b><button class="btn sm" id="bCopy" type="button">העתקת הדוח</button></div>
     <pre class="hex" id="tout" style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;word-break:break-word;min-height:120px;max-height:420px"></pre>
     <p style="margin:0;color:var(--muted);font-size:.85rem">בסיום, לחצו "העתקת הדוח" והדביקו אותו בשיחה עם Claude.</p>
-    <div class="row" style="justify-content:space-between;margin-top:6px"><b>יומן תקשורת עם המקודד</b><button class="btn sm" id="exp6aBtn" type="button">ניסוי כתיבה בדרך אחרת (0x6a)</button> <button class="btn sm" id="fmtBtn" type="button">פירמוט מדבקה (בדיקת כתיבה)</button> <button class="btn sm" id="probeBtn" type="button">בדיקת אורך הודעה (עם מדבקה על המקודד, לא כותב כלום)</button> <button class="btn sm" id="usbLogCopy" type="button">העתקת היומן</button></div>
+    <div class="row" style="justify-content:space-between;margin-top:6px"><b>יומן תקשורת עם המקודד</b><button class="btn sm" id="exp52Btn" type="button">ניסוי כתיבה עם בחירת מצב (0x52)</button> <button class="btn sm" id="exp6aBtn" type="button">ניסוי כתיבה בדרך אחרת (0x6a)</button> <button class="btn sm" id="fmtBtn" type="button">פירמוט מדבקה (בדיקת כתיבה)</button> <button class="btn sm" id="probeBtn" type="button">בדיקת אורך הודעה (עם מדבקה על המקודד, לא כותב כלום)</button> <button class="btn sm" id="usbLogCopy" type="button">העתקת היומן</button></div>
     <pre class="hex" id="usbLog" style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;word-break:break-word;min-height:80px;max-height:320px">אין עדיין תקשורת. אחרי כתיבה או קריאה יופיעו כאן הפקודות והתשובות.</pre>
     <div style="border-top:1px solid var(--line);margin-top:6px;padding-top:14px;display:flex;flex-direction:column;gap:12px" id="fwPanel">
       <h2>קושחת המקודד</h2>
@@ -629,6 +629,29 @@ const usb = (()=>{
       return {ok:p4==="03 00 fe 00", lines:out};
     });
   }
+  /* Replicate the maker's encode sequence INCLUDING the mode-select the app sends on tab entry (0x52),
+     which our normal write never sent. No 0x53/authorization is used here. Writes only page 4
+     (03 00 FE 00, a valid empty NDEF) and reads it back. Nothing permanent on the device is touched. */
+  async function exp52(){
+    return session(async()=>{
+      // 0x52 = mode-select; the app sends it with byte 0x03 when entering the card tab. Try that, and the card_type too.
+      for(const modeByte of [0x03, 2, 1]){
+        try{ const r=(await req(0x52,Uint8Array.of(modeByte),2000)).final; dbgNote("0x52 בחירת מצב ("+modeByte+") → "+(r?hx(r):"אין תשובה")); }
+        catch(e){ dbgNote("0x52 ("+modeByte+") → "+e.message); }
+      }
+      const inf=await info(true), t=inf.type;
+      const pageData=new Uint8Array(1024), pageState=new Uint8Array(256);
+      pageData.set([0x03,0x00,0xFE,0x00],16); pageState[4]=2;
+      const big=new Uint8Array(0x530), bv=new DataView(big.buffer);
+      big.set(inf.pwd,0); bv.setInt32(8,t,true); bv.setInt32(12,1,true); big.set(pageData,0x30); big.set(pageState,0x430);
+      try{ const w=await req(0x82,big,7000,{idle:3000,onProg:()=>false}); if(w&&w.final&&w.final.length>=4) dbgNote("0x82 כתיבה → סטטוס "+u32(w.final,0)); }
+      catch(e){ dbgNote("0x82 → "+e.message); }
+      const mem=await readMem(inf);
+      const p4=hx(mem.slice(16,20));
+      dbgNote("עמוד 4 אחרי הניסוי = "+p4+(p4==="03 00 fe 00"?"  ← נכתב!":"  (לא השתנה)"));
+      return {ok:p4==="03 00 fe 00"};
+    });
+  }
   /* Format (0x84, payload = 8-byte password): the encoder resets the NDEF area by itself. Used as a write test. */
   async function format(){
     return session(async()=>{
@@ -669,7 +692,7 @@ const usb = (()=>{
     async connect(){ const ds=await navigator.hid.requestDevice({filters:[{vendorId:VID,productId:PID}]}); if(!ds.length) throw new Error("לא נבחר מקודד"); await attach(ds[0]); },
     cancel(){ waiters.forEach(w=>{ w.stop(); w.rej(new Error("הפעולה בוטלה")); }); waiters=[]; },
     onChange(f){ listeners.push(f); },
-    read, write, probe, format, exp6a, fwParse, fwVersion, fwUpdate, log,
+    read, write, probe, format, exp6a, exp52, fwParse, fwVersion, fwUpdate, log,
   };
 })();
 
@@ -1272,6 +1295,13 @@ $("#diagBtn").addEventListener("click", async ()=>{
 $("#diagCopy").addEventListener("click", async ()=>{
   try{ await navigator.clipboard.writeText($("#diagOut").textContent); toast("הדוח הועתק"); }
   catch{ const r=document.createRange(); r.selectNodeContents($("#diagOut")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("סמנו והעתיקו ידנית"); }
+});
+$("#exp52Btn").addEventListener("click", async ()=>{
+  if(!usb.connected) return toast("חברו קודם את המקודד");
+  const btn=$("#exp52Btn"); btn.disabled=true; btn.textContent="מנסה… (עד 15 שניות)";
+  try{ const r=await usb.exp52(); toast(r.ok?"הצליח! עמוד 4 נכתב אחרי בחירת מצב. שלחו את היומן.":"עמוד 4 לא השתנה. העתיקו את היומן ושלחו אותו."); }
+  catch(e){ toast(e.message); }
+  finally{ btn.disabled=false; btn.textContent="ניסוי כתיבה עם בחירת מצב (0x52)"; }
 });
 $("#exp6aBtn").addEventListener("click", async ()=>{
   if(!usb.connected) return toast("חברו קודם את המקודד");
