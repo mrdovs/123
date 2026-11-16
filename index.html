@@ -240,7 +240,7 @@ small.note{color:var(--muted);font-size:.8rem}
     <div class="row" style="justify-content:space-between"><b>הדוח</b><button class="btn sm" id="bCopy" type="button">העתקת הדוח</button></div>
     <pre class="hex" id="tout" style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;word-break:break-word;min-height:120px;max-height:420px"></pre>
     <p style="margin:0;color:var(--muted);font-size:.85rem">בסיום, לחצו "העתקת הדוח" והדביקו אותו בשיחה עם Claude.</p>
-    <div class="row" style="justify-content:space-between;margin-top:6px"><b>יומן תקשורת עם המקודד</b><button class="btn sm" id="fmtBtn" type="button">פירמוט מדבקה (בדיקת כתיבה)</button> <button class="btn sm" id="probeBtn" type="button">בדיקת אורך הודעה (עם מדבקה על המקודד, לא כותב כלום)</button> <button class="btn sm" id="usbLogCopy" type="button">העתקת היומן</button></div>
+    <div class="row" style="justify-content:space-between;margin-top:6px"><b>יומן תקשורת עם המקודד</b><button class="btn sm" id="exp6aBtn" type="button">ניסוי כתיבה בדרך אחרת (0x6a)</button> <button class="btn sm" id="fmtBtn" type="button">פירמוט מדבקה (בדיקת כתיבה)</button> <button class="btn sm" id="probeBtn" type="button">בדיקת אורך הודעה (עם מדבקה על המקודד, לא כותב כלום)</button> <button class="btn sm" id="usbLogCopy" type="button">העתקת היומן</button></div>
     <pre class="hex" id="usbLog" style="background:var(--hex-bg);color:var(--hex-fg);padding:12px;border-radius:10px;white-space:pre-wrap;word-break:break-word;min-height:80px;max-height:320px">אין עדיין תקשורת. אחרי כתיבה או קריאה יופיעו כאן הפקודות והתשובות.</pre>
     <div style="border-top:1px solid var(--line);margin-top:6px;padding-top:14px;display:flex;flex-direction:column;gap:12px" id="fwPanel">
       <h2>קושחת המקודד</h2>
@@ -582,6 +582,36 @@ const usb = (()=>{
       dbgNote("עדכון: הסתיים בהצלחה");
     } finally{ busy=false; }
   }
+  /* Experiment: write page 4 through the MIFARE block path (0x69 card info, then 0x6a write blocks).
+     0x6a payload: start block, block count, mode, key A[6], key B[6], then 16 bytes per block; reply = u32 status.
+     On NTAG a MIFARE WRITE is the "compatibility write": the first 4 bytes land in the page with that number.
+     Only page 4 is touched, with 03 00 FE 00 (a valid empty NDEF message). */
+  async function exp6a(){
+    return session(async()=>{
+      const out=[];
+      let magic=0;
+      try{
+        const r=(await req(0x69,new Uint8Array(0),5000)).final;
+        magic=r&&r.length>1?r[1]:0;
+        out.push("0x69 → "+(r?hx(r):"אין נתונים")); dbgNote("ניסוי 0x6a: מידע כרטיס "+(r?hx(r):"-"));
+      }catch(e){ out.push("0x69 → "+e.message); dbgNote("ניסוי 0x6a: אין תשובה ל‑0x69"); }
+      const modes=[...new Set([magic,0,1])];
+      for(const m of modes){
+        const p=new Uint8Array(15+16);
+        p[0]=4; p[1]=1; p[2]=m; p.fill(0xFF,3,15);
+        p.set([0x03,0x00,0xFE,0x00],15);
+        let res;
+        try{ const r=(await req(0x6a,p,4000)).final; res=r&&r.length>=4?("סטטוס "+u32(r,0)):"תשובה"; }
+        catch(e){ if(!/לא ענה/.test(e.message)) throw e; res="אין תשובה"; }
+        out.push(`0x6a מצב ${m} → ${res}`); dbgNote(`ניסוי 0x6a: מצב ${m} → ${res}`);
+      }
+      const inf=await info(true);
+      const mem=await readMem(inf);
+      const p4=hx(mem.slice(16,20));
+      out.push("עמוד 4 אחרי הניסוי: "+p4); dbgNote("ניסוי 0x6a: עמוד 4 אחרי הניסוי = "+p4+(p4==="03 00 fe 00"?"  ← נכתב!":"  (לא השתנה)"));
+      return {ok:p4==="03 00 fe 00", lines:out};
+    });
+  }
   /* Format (0x84, payload = 8-byte password): the encoder resets the NDEF area by itself. Used as a write test. */
   async function format(){
     return session(async()=>{
@@ -622,7 +652,7 @@ const usb = (()=>{
     async connect(){ const ds=await navigator.hid.requestDevice({filters:[{vendorId:VID,productId:PID}]}); if(!ds.length) throw new Error("לא נבחר מקודד"); await attach(ds[0]); },
     cancel(){ waiters.forEach(w=>{ w.stop(); w.rej(new Error("הפעולה בוטלה")); }); waiters=[]; },
     onChange(f){ listeners.push(f); },
-    read, write, probe, format, fwParse, fwVersion, fwUpdate, log,
+    read, write, probe, format, exp6a, fwParse, fwVersion, fwUpdate, log,
   };
 })();
 
@@ -1052,6 +1082,13 @@ $("#diagBtn").addEventListener("click", async ()=>{
 $("#diagCopy").addEventListener("click", async ()=>{
   try{ await navigator.clipboard.writeText($("#diagOut").textContent); toast("הדוח הועתק"); }
   catch{ const r=document.createRange(); r.selectNodeContents($("#diagOut")); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast("סמנו והעתיקו ידנית"); }
+});
+$("#exp6aBtn").addEventListener("click", async ()=>{
+  if(!usb.connected) return toast("חברו קודם את המקודד");
+  const btn=$("#exp6aBtn"); btn.disabled=true; btn.textContent="מנסה… (עד 20 שניות)";
+  try{ const r=await usb.exp6a(); toast(r.ok?"הצליח! עמוד 4 נכתב דרך 0x6a. שלחו את היומן.":"עמוד 4 לא השתנה. העתיקו את היומן ושלחו אותו."); }
+  catch(e){ toast(e.message); }
+  finally{ btn.disabled=false; btn.textContent="ניסוי כתיבה בדרך אחרת (0x6a)"; }
 });
 $("#fmtBtn").addEventListener("click", async ()=>{
   if(!usb.connected) return toast("חברו קודם את המקודד");
