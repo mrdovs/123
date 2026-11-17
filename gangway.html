@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>בקרת גשר עלייה</title>
+<title>בקרת כניסה</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&family=Rubik:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
 /* Layout: kiosk — fixed side rail with the four stations and live counts, main work area on the left.
@@ -176,14 +176,14 @@ tbody tr:last-child td{border-bottom:0}
 <div class="app">
   <aside class="rail">
     <div class="brand">
-      <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#04222a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l2.5 3h13L21 17"/><path d="M5 17V11h14v6"/><path d="M8 11V7h8v4"/><path d="M12 7V3"/></svg></div>
-      <div><b>בקרת גשר עלייה</b><small id="shipName">האונייה</small></div>
+      <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#04222a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/><path d="M10 21v-5h4v5"/><path d="M9 8h0M15 8h0M9 12h0M15 12h0"/></svg></div>
+      <div><b>בקרת כניסה</b><small id="shipName">המקום</small></div>
     </div>
     <div class="clock" id="clock">--:--<small id="date"></small></div>
     <nav class="modes" aria-label="עמדות">
-      <a href="#gangway" data-mode="gangway"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8a4 4 0 0 1 8 0M10 10.5a2 2 0 0 1 4 0"/><path d="M9 16h6"/></svg>עמדת בידוק</a>
-      <a href="#onboard" data-mode="onboard"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M3 18l2 3h14l2-3"/><path d="M5 18v-6h14v6"/><path d="M9 12V8h6v4"/></svg>על הסיפון / ביבשה</a>
-      <a href="#search" data-mode="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>חיפוש נוסעים</a>
+      <a href="#gangway" data-mode="gangway"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8a4 4 0 0 1 8 0M10 10.5a2 2 0 0 1 4 0"/><path d="M9 16h6"/></svg>עמדת כניסה</a>
+      <a href="#onboard" data-mode="onboard"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M3 18l2 3h14l2-3"/><path d="M5 18v-6h14v6"/><path d="M9 12V8h6v4"/></svg>בפנים / בחוץ</a>
+      <a href="#search" data-mode="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>חיפוש אנשים</a>
       <a href="#encode" data-mode="encode"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h4M7 14h7"/><circle cx="17" cy="12" r="1.5"/></svg>קידוד כרטיסים<span class="lock" id="lockBadge">🔒</span></a>
     </nav>
     <div class="reader" id="reader">
@@ -192,8 +192,8 @@ tbody tr:last-child td{border-bottom:0}
       <button class="btn sm" id="pnConnect" type="button">חיבור PN532</button>
     </div>
     <div class="counts">
-      <div class="on"><b id="cOn">0</b><span>על הסיפון</span></div>
-      <div class="off"><b id="cOff">0</b><span>ביבשה</span></div>
+      <div class="on"><b id="cOn">0</b><span>בפנים</span></div>
+      <div class="off"><b id="cOff">0</b><span>בחוץ</span></div>
     </div>
   </aside>
 
@@ -201,7 +201,7 @@ tbody tr:last-child td{border-bottom:0}
     <!-- CHECKPOINT -->
     <section class="view" id="v-gangway" hidden>
       <div class="vhead">
-        <div><h1>עמדת בידוק</h1><p>הניחו כרטיס על הקורא. המערכת מזהה את הנוסע ורושמת עלייה או ירידה.</p></div>
+        <div><h1>עמדת כניסה</h1><p>הניחו כרטיס על הקורא. המערכת מזהה את האדם ורושמת כניסה או יציאה.</p></div>
         <div class="dirsel" role="group" aria-label="כיוון תנועה">
           <button type="button" data-dir="auto" aria-pressed="true">אוטומטי</button>
           <button type="button" data-dir="on" aria-pressed="false">עלייה בלבד</button>
@@ -214,7 +214,7 @@ tbody tr:last-child td{border-bottom:0}
           <div class="panel">
             <h2>בידוק ידני</h2>
             <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              <input type="search" id="gwSearch" placeholder="שם או מספר תא" autocomplete="off"></div>
+              <input type="search" id="gwSearch" placeholder="שם או חדר" autocomplete="off"></div>
             <ul class="results" id="gwResults" style="max-height:220px"></ul>
           </div>
           <div class="panel">
@@ -227,10 +227,10 @@ tbody tr:last-child td{border-bottom:0}
 
     <!-- ONBOARD / ASHORE -->
     <section class="view" id="v-onboard" hidden>
-      <div class="vhead"><div><h1>על הסיפון / ביבשה</h1><p>מצב נוכחי של כל הנוסעים ואנשי הצוות, ושעת התנועה האחרונה.</p></div></div>
+      <div class="vhead"><div><h1>בפנים / בחוץ</h1><p>מצב נוכחי של כל האנשים, ושעת התנועה האחרונה.</p></div></div>
       <div class="tiles">
-        <div class="tile on"><b id="tOn">0</b><span>על הסיפון</span></div>
-        <div class="tile off"><b id="tOff">0</b><span>ביבשה</span></div>
+        <div class="tile on"><b id="tOn">0</b><span>בפנים</span></div>
+        <div class="tile off"><b id="tOff">0</b><span>בחוץ</span></div>
         <div class="tile"><b id="tAll">0</b><span>סה"כ רשומים</span></div>
       </div>
       <div class="panel">
@@ -239,13 +239,13 @@ tbody tr:last-child td{border-bottom:0}
             <input type="search" id="obSearch" placeholder="חיפוש לפי שם" autocomplete="off"></div>
           <div class="chips" id="obFilter">
             <button type="button" data-f="all" aria-pressed="true">הכל</button>
-            <button type="button" data-f="on" aria-pressed="false">על הסיפון</button>
-            <button type="button" data-f="off" aria-pressed="false">ביבשה</button>
+            <button type="button" data-f="on" aria-pressed="false">בפנים</button>
+            <button type="button" data-f="off" aria-pressed="false">בחוץ</button>
             <button type="button" data-f="alert" aria-pressed="false">עם התראה</button>
           </div>
         </div>
         <div class="tablewrap"><table>
-          <thead><tr><th>שם</th><th>תא</th><th>סוג</th><th>מצב</th><th>תנועה אחרונה</th><th>הערות</th></tr></thead>
+          <thead><tr><th>שם</th><th>חדר</th><th>סוג</th><th>מצב</th><th>תנועה אחרונה</th><th>הערות</th></tr></thead>
           <tbody id="obBody"></tbody>
         </table></div>
       </div>
@@ -253,11 +253,11 @@ tbody tr:last-child td{border-bottom:0}
 
     <!-- SEARCH -->
     <section class="view" id="v-search" hidden>
-      <div class="vhead"><div><h1>חיפוש נוסעים</h1><p>חיפוש לפי שם או מספר תא, היסטוריית תנועות והערות.</p></div></div>
+      <div class="vhead"><div><h1>חיפוש אנשים</h1><p>חיפוש לפי שם או חדר, היסטוריית תנועות והערות.</p></div></div>
       <div class="split">
         <div class="panel">
           <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            <input type="search" id="sSearch" placeholder="שם או מספר תא" autocomplete="off"></div>
+            <input type="search" id="sSearch" placeholder="שם או חדר" autocomplete="off"></div>
           <ul class="results" id="sResults"></ul>
         </div>
         <div class="panel" id="sDetail"></div>
@@ -275,36 +275,36 @@ tbody tr:last-child td{border-bottom:0}
       </div>
       <div id="encBody" hidden style="display:flex;flex-direction:column;gap:18px">
         <div class="vhead">
-          <div><h1>קידוד כרטיסים</h1><p>בחרו נוסע או צרו חדש, הניחו כרטיס על הקורא ולחצו "קישור כרטיס".</p></div>
+          <div><h1>קידוד כרטיסים</h1><p>בחרו אדם או צרו חדש, הניחו כרטיס על הקורא ולחצו "קישור כרטיס".</p></div>
           <button class="btn" id="lockBtn" type="button">נעילה</button>
         </div>
         <div class="split">
           <div class="panel">
-            <div class="row" style="justify-content:space-between"><h2>נוסע</h2><button class="btn sm" id="newPax" type="button">+ נוסע חדש</button></div>
+            <div class="row" style="justify-content:space-between"><h2>אדם</h2><button class="btn sm" id="newPax" type="button">+ רישום חדש</button></div>
             <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
               <input type="search" id="eSearch" placeholder="חיפוש לפי שם" autocomplete="off"></div>
             <ul class="results" id="eResults" style="max-height:340px"></ul>
           </div>
           <div style="display:flex;flex-direction:column;gap:18px">
             <form class="panel" id="paxForm" autocomplete="off">
-              <h2 id="formTitle">נוסע חדש</h2>
+              <h2 id="formTitle">רישום חדש</h2>
               <div class="grid2">
                 <label class="f" for="fFirst">שם פרטי<input type="text" id="fFirst" required></label>
                 <label class="f" for="fLast">שם משפחה<input type="text" id="fLast" required></label>
-                <label class="f" for="fCabin">מספר תא<input type="text" id="fCabin" inputmode="numeric"></label>
-                <label class="f" for="fType">סוג<select id="fType"><option>אורח</option><option>צוות</option><option>אורח VIP</option><option>מבקר</option></select></label>
+                <label class="f" for="fCabin">חדר / יחידה<input type="text" id="fCabin" inputmode="numeric"></label>
+                <label class="f" for="fType">סוג<select id="fType"><option>עובד</option><option>מבקר</option><option>VIP</option><option>צוות</option></select></label>
               </div>
               <div class="row">
                 <button class="btn" type="submit" id="saveBtn">שמירה</button>
                 <button class="btn primary" type="button" id="encodeBtn">קישור כרטיס</button>
-                <button class="btn danger" type="button" id="delBtn" hidden>מחיקת נוסע</button>
+                <button class="btn danger" type="button" id="delBtn" hidden>מחיקת אדם</button>
               </div>
               <p class="muted" id="cardInfo" style="margin:0;font-size:.9rem"></p>
             </form>
             <div class="panel">
               <h2>ניהול</h2>
               <div class="grid2">
-                <label class="f" for="shipInput">שם האונייה<input type="text" id="shipInput"></label>
+                <label class="f" for="shipInput">שם המקום<input type="text" id="shipInput"></label>
                 <label class="f" for="pinInput">קוד גישה לקידוד<input type="password" id="pinInput" inputmode="numeric" maxlength="8"></label>
               </div>
               <div class="row">
@@ -756,14 +756,14 @@ function sample(){
   const t=now(), h=3600e3;
   const P=(id,first,last,cabin,type,status,ago,notes=[])=>({id,first,last,cabin,type,status,lastMove:t-ago*h,cardUid:"",notes,moves:[{ts:t-ago*h,dir:status}],example:true});
   return {ship:"", pin:"999", seq:9, passengers:[
-    P("P0001","דנה","לוי","8214","אורח","on",1.2),
-    P("P0002","יוסי","כהן","8214","אורח","off",0.6,[{ts:t-26*h,text:"ניסה להעלות שישיית מים לאונייה. הוחרם בבידוק.",alert:true}]),
-    P("P0003","מאיה","פרץ","10532","אורח VIP","on",3.4),
-    P("P0004","אבי","מזרחי","6120","אורח","off",2.1),
-    P("P0005","Liam","O'Brien","9007","אורח","on",5.0,[{ts:t-4*h,text:"מבקש עזרה בעלייה בכבש (כיסא גלגלים).",alert:false}]),
+    P("P0001","דנה","לוי","8214","עובד","on",1.2),
+    P("P0002","יוסי","כהן","8214","עובד","off",0.6,[{ts:t-26*h,text:"ניסה להכניס פריט אסור. עוכב בכניסה.",alert:true}]),
+    P("P0003","מאיה","פרץ","10532","VIP","on",3.4),
+    P("P0004","אבי","מזרחי","6120","עובד","off",2.1),
+    P("P0005","Liam","O'Brien","9007","עובד","on",5.0,[{ts:t-4*h,text:"מבקש עזרה בעלייה בכבש (כיסא גלגלים).",alert:false}]),
     P("P0006","נועה","שפירא","C-114","צוות","on",0.2),
     P("P0007","Carlos","Mendes","C-208","צוות","off",1.0),
-    P("P0008","רונית","אברהם","7311","אורח","on",8.0),
+    P("P0008","רונית","אברהם","7311","עובד","on",8.0),
   ]};
 }
 let db;
@@ -780,11 +780,11 @@ const fmtFull=ts=>ts?new Date(ts).toLocaleString("he-IL",{day:"2-digit",month:"2
 function ago(ts){ if(!ts) return ""; const m=Math.round((now()-ts)/60000); if(m<1) return "עכשיו"; if(m<60) return `לפני ${m} דק'`; const h=Math.floor(m/60); if(h<24) return `לפני ${h} שע'`; return `לפני ${Math.floor(h/24)} ימים`; }
 const norm=s=>String(s||"").toLowerCase().replace(/[\s'"-]/g,"");
 function match(p,q){ q=norm(q); if(!q) return true; return norm(fullName(p)).includes(q)||norm(p.last+p.first).includes(q)||norm(p.cabin).includes(q); }
-const statusPill=p=>p.status==="on"?`<span class="pill on">על הסיפון</span>`:`<span class="pill off">ביבשה</span>`;
+const statusPill=p=>p.status==="on"?`<span class="pill on">בפנים</span>`:`<span class="pill off">בחוץ</span>`;
 function sortByName(a,b){ return fullName(a).localeCompare(fullName(b),"he"); }
 function exampleBanner(){
   if(!db.passengers.some(p=>p.example)) return "";
-  return `<div class="example">הרשימה כוללת נוסעים לדוגמה. <button class="btn sm" type="button" data-act="clear-examples">הסרת הדוגמאות</button></div>`;
+  return `<div class="example">הרשימה כוללת אנשים לדוגמה. <button class="btn sm" type="button" data-act="clear-examples">הסרת הדוגמאות</button></div>`;
 }
 document.addEventListener("click",e=>{ if(e.target.closest('[data-act="clear-examples"]')){ db.passengers=db.passengers.filter(p=>!p.example); save(); renderAll(); toast("הדוגמאות הוסרו"); } });
 
@@ -798,7 +798,7 @@ setInterval(tick,1000); tick();
 function renderCounts(){
   const on=db.passengers.filter(p=>p.status==="on").length, off=db.passengers.length-on;
   $("#cOn").textContent=on; $("#cOff").textContent=off;
-  $("#shipName").textContent=db.ship||"הגדירו שם אונייה בעמוד הקידוד";
+  $("#shipName").textContent=db.ship||"הגדירו שם מקום בעמוד הקידוד";
 }
 
 /* ---------------- routing ---------------- */
@@ -878,15 +878,15 @@ function onCard(uid){
 function processPax(p,source){
   const dir = dirMode==="auto" ? (p.status==="on"?"off":"on") : dirMode;
   const prev={status:p.status,lastMove:p.lastMove};
-  if(dirMode!=="auto" && p.status===dir){ showPax(p,null,`כבר רשום ${dir==="on"?"על הסיפון":"ביבשה"}`); return; }
+  if(dirMode!=="auto" && p.status===dir){ showPax(p,null,`כבר רשום ${dir==="on"?"בפנים":"בחוץ"}`); return; }
   move(p,dir,source);
   showPax(p,{dir,prev});
   renderFeed(); renderCounts();
 }
 function showUnknown(uid){
   clearTimeout(idleTimer);
-  $("#stage").innerHTML=`<div class="verdict unknown"><div><div class="big">כרטיס לא מוכר</div><div class="muted">הכרטיס לא מקושר לאף נוסע. מספר כרטיס: <span class="mono">${esc(uid)}</span></div></div></div>
-    <div class="row"><button class="btn" type="button" id="toIdle">חזרה</button><a class="btn" href="#encode">קישור הכרטיס לנוסע (דורש קוד)</a></div>`;
+  $("#stage").innerHTML=`<div class="verdict unknown"><div><div class="big">כרטיס לא מוכר</div><div class="muted">הכרטיס לא מקושר לאף אדם. מספר כרטיס: <span class="mono">${esc(uid)}</span></div></div></div>
+    <div class="row"><button class="btn" type="button" id="toIdle">חזרה</button><a class="btn" href="#encode">קישור הכרטיס לאדם (דורש קוד)</a></div>`;
   $("#toIdle").onclick=idleStage;
   try{ new AudioContext && beep(220,0.35); }catch{}
   idleTimer=setTimeout(idleStage,12000);
@@ -895,12 +895,12 @@ function showPax(p,mv,info){
   clearTimeout(idleTimer); current=p;
   const alerts=p.notes.filter(n=>n.alert);
   const v = mv ? (mv.dir==="on"
-      ? `<div class="verdict on"><div><div class="big">עלייה לאונייה</div><div class="muted">ברוכים השבים${p.cabin?` · תא ${esc(p.cabin)}`:""}</div></div><div class="time">${fmtTime(p.lastMove)}</div></div>`
-      : `<div class="verdict off"><div><div class="big">ירידה מהאונייה</div><div class="muted">נרשמה יציאה לחוף</div></div><div class="time">${fmtTime(p.lastMove)}</div></div>`)
+      ? `<div class="verdict on"><div><div class="big">כניסה</div><div class="muted">ברוכים הבאים${p.cabin?` · חדר ${esc(p.cabin)}`:""}</div></div><div class="time">${fmtTime(p.lastMove)}</div></div>`
+      : `<div class="verdict off"><div><div class="big">יציאה</div><div class="muted">נרשמה יציאה</div></div><div class="time">${fmtTime(p.lastMove)}</div></div>`)
     : `<div class="verdict ${p.status}"><div><div class="big">${esc(info||"")}</div><div class="muted">לא נרשמה תנועה</div></div></div>`;
   $("#stage").innerHTML=`${v}
     <div class="who"><div class="avatar">${esc(initials(p))}</div>
-      <div><h2>${esc(fullName(p))}</h2><div class="muted">${esc(p.type)}${p.cabin?` · תא ${esc(p.cabin)}`:""} · ${statusPill(p)}</div></div></div>
+      <div><h2>${esc(fullName(p))}</h2><div class="muted">${esc(p.type)}${p.cabin?` · חדר ${esc(p.cabin)}`:""} · ${statusPill(p)}</div></div></div>
     ${alerts.length?`<div class="alerts"><b>⚠ שימו לב</b>${alerts.map(n=>`<div>${esc(n.text)} <small class="muted">· ${fmtFull(n.ts)}</small></div>`).join("")}</div>`:""}
     <form class="row" id="gwNoteForm" autocomplete="off">
       <input type="text" id="gwNote" placeholder="הוספת הערה, למשל: ניסה להבריח מים" style="flex:1;min-width:200px">
@@ -910,7 +910,7 @@ function showPax(p,mv,info){
     ${p.notes.length?`<ul class="notes">${p.notes.slice(0,4).map(n=>`<li class="${n.alert?"alert":""}"><div class="txt">${esc(n.text)}<small>${fmtFull(n.ts)}</small></div>${n.alert?'<span class="pill alert">התראה</span>':""}</li>`).join("")}</ul>`:""}
     <div class="row">
       ${mv?`<button class="btn" type="button" id="undoMove">ביטול התנועה</button>`:""}
-      <button class="btn" type="button" id="openPax">לכרטיס הנוסע</button>
+      <button class="btn" type="button" id="openPax">לכרטיס האדם</button>
       <button class="btn" type="button" id="toIdle">סיום</button>
     </div>`;
   if(alerts.length){ try{ beep(330,0.25); setTimeout(()=>beep(330,0.25),300); }catch{} } else { try{ beep(880,0.12); }catch{} }
@@ -927,7 +927,7 @@ function beep(f,d){ actx=actx||new AudioContext(); const o=actx.createOscillator
 function renderFeed(){
   const all=[]; db.passengers.forEach(p=>p.moves.slice(0,5).forEach(m=>all.push({p,m})));
   all.sort((a,b)=>b.m.ts-a.m.ts);
-  $("#feed").innerHTML = all.length ? all.slice(0,10).map(({p,m})=>`<li><span class="pill ${m.dir}">${m.dir==="on"?"עלה":"ירד"}</span><span class="nm">${esc(fullName(p))}</span>${hasAlert(p)?'<span class="pill alert">!</span>':""}<span class="t">${fmtTime(m.ts)}</span></li>`).join("")
+  $("#feed").innerHTML = all.length ? all.slice(0,10).map(({p,m})=>`<li><span class="pill ${m.dir}">${m.dir==="on"?"נכנס":"יצא"}</span><span class="nm">${esc(fullName(p))}</span>${hasAlert(p)?'<span class="pill alert">!</span>':""}<span class="t">${fmtTime(m.ts)}</span></li>`).join("")
     : `<li class="empty" style="display:block">עדיין אין תנועות</li>`;
 }
 $("#gwSearch").addEventListener("input",renderGwResults);
@@ -935,7 +935,7 @@ function renderGwResults(){
   const q=$("#gwSearch").value.trim();
   if(!q){ $("#gwResults").innerHTML=""; return; }
   const list=db.passengers.filter(p=>match(p,q)).sort(sortByName).slice(0,8);
-  $("#gwResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`תא ${esc(p.cabin)} · `:""}${p.status==="on"?"על הסיפון":"ביבשה"}</small></div>${hasAlert(p)?'<span class="pill alert">!</span>':""}</button></li>`).join("")
+  $("#gwResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`חדר ${esc(p.cabin)} · `:""}${p.status==="on"?"בפנים":"בחוץ"}</small></div>${hasAlert(p)?'<span class="pill alert">!</span>':""}</button></li>`).join("")
     : `<li class="empty">לא נמצא</li>`;
 }
 $("#gwResults").addEventListener("click",e=>{ const b=e.target.closest("button[data-id]"); if(!b) return; const p=byId(b.dataset.id);
@@ -953,7 +953,7 @@ function renderOnboard(){
   $("#obBody").innerHTML = list.length ? list.map(p=>`<tr data-id="${p.id}">
       <td><b>${esc(fullName(p))}</b></td><td>${esc(p.cabin||"—")}</td><td class="muted">${esc(p.type)}</td>
       <td>${statusPill(p)}</td>
-      <td>${p.status==="on"?"עלה":"ירד"} ב‑<span class="mono">${fmtFull(p.lastMove)}</span> <small class="muted">${ago(p.lastMove)}</small></td>
+      <td>${p.status==="on"?"נכנס":"יצא"} ב‑<span class="mono">${fmtFull(p.lastMove)}</span> <small class="muted">${ago(p.lastMove)}</small></td>
       <td>${p.notes.length?(hasAlert(p)?`<span class="pill alert">${p.notes.length} · התראה</span>`:`<span class="muted">${p.notes.length}</span>`):'<span class="muted">—</span>'}</td></tr>`).join("")
     : `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">אין תוצאות</td></tr>`;
 }
@@ -965,19 +965,19 @@ $("#sSearch").addEventListener("input",renderSearch);
 function renderSearch(){
   const q=$("#sSearch").value.trim();
   const list=db.passengers.filter(p=>match(p,q)).sort(sortByName);
-  $("#sResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}" aria-current="${p.id===selected}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`תא ${esc(p.cabin)} · `:""}${esc(p.type)}</small></div>${statusPill(p)}</button></li>`).join("")
-    : `<li class="empty">לא נמצאו נוסעים</li>`;
+  $("#sResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}" aria-current="${p.id===selected}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`חדר ${esc(p.cabin)} · `:""}${esc(p.type)}</small></div>${statusPill(p)}</button></li>`).join("")
+    : `<li class="empty">לא נמצאו אנשים</li>`;
   renderDetail();
 }
 $("#sResults").addEventListener("click",e=>{ const b=e.target.closest("button[data-id]"); if(!b) return; selected=b.dataset.id; renderSearch(); });
 function renderDetail(){
   const p=selected&&byId(selected);
-  if(!p){ $("#sDetail").innerHTML=`<div class="empty">בחרו נוסע מהרשימה</div>${exampleBanner()}`; return; }
+  if(!p){ $("#sDetail").innerHTML=`<div class="empty">בחרו אדם מהרשימה</div>${exampleBanner()}`; return; }
   $("#sDetail").innerHTML=`
     <div class="who"><div class="avatar">${esc(initials(p))}</div><div><h2>${esc(fullName(p))}</h2><div class="muted">${esc(p.type)} · ${statusPill(p)}</div></div></div>
     <dl class="kv">
-      <dt>תא</dt><dd>${esc(p.cabin||"—")}</dd>
-      <dt>תנועה אחרונה</dt><dd>${p.status==="on"?"עלייה":"ירידה"} · <span class="mono">${fmtFull(p.lastMove)}</span> <small class="muted">${ago(p.lastMove)}</small></dd>
+      <dt>חדר</dt><dd>${esc(p.cabin||"—")}</dd>
+      <dt>תנועה אחרונה</dt><dd>${p.status==="on"?"כניסה":"יציאה"} · <span class="mono">${fmtFull(p.lastMove)}</span> <small class="muted">${ago(p.lastMove)}</small></dd>
       <dt>כרטיס</dt><dd>${p.cardUid?`<span class="mono">${esc(p.cardUid)}</span>`:'<span class="muted">לא קודד כרטיס</span>'}</dd>
       <dt>מזהה</dt><dd class="mono">${esc(p.id)}</dd>
     </dl>
@@ -992,7 +992,7 @@ function renderDetail(){
     </form>
     ${p.notes.length?`<ul class="notes">${p.notes.map((n,i)=>`<li class="${n.alert?"alert":""}"><div class="txt">${esc(n.text)}<small>${fmtFull(n.ts)}</small></div>${n.alert?'<span class="pill alert">התראה</span>':""}<button class="btn sm" type="button" data-del="${i}" aria-label="מחיקת הערה">✕</button></li>`).join("")}</ul>`:'<p class="muted" style="margin:0">אין הערות</p>'}
     <h3>היסטוריית תנועות</h3>
-    <ul class="hist">${p.moves.map(m=>`<li><span class="t">${fmtFull(m.ts)}</span><span>${m.dir==="on"?"עלייה לאונייה":"ירידה מהאונייה"}</span>${m.source?`<small class="muted">· ${esc(m.source)}</small>`:""}</li>`).join("")||'<li class="muted">אין תנועות</li>'}</ul>`;
+    <ul class="hist">${p.moves.map(m=>`<li><span class="t">${fmtFull(m.ts)}</span><span>${m.dir==="on"?"כניסה":"יציאה"}</span>${m.source?`<small class="muted">· ${esc(m.source)}</small>`:""}</li>`).join("")||'<li class="muted">אין תנועות</li>'}</ul>`;
   $("#dMove").onclick=()=>{ move(p,p.status==="on"?"off":"on","ידני"); toast("נרשם"); renderSearch(); };
   $("#dNoteForm").onsubmit=e=>{ e.preventDefault(); const t=$("#dNote").value.trim(); if(!t) return; p.notes.unshift({ts:now(),text:t,alert:$("#dNoteAlert").checked}); delete p.example; save(); renderDetail(); toast("ההערה נשמרה"); };
   $("#sDetail").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{ p.notes.splice(+b.dataset.del,1); save(); renderDetail(); });
@@ -1028,13 +1028,13 @@ $("#eSearch").addEventListener("input",renderEncode);
 function renderEncode(){
   const q=$("#eSearch").value.trim();
   const list=db.passengers.filter(p=>match(p,q)).sort(sortByName);
-  $("#eResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}" aria-current="${p.id===editId}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`תא ${esc(p.cabin)} · `:""}${p.cardUid?"כרטיס מקודד":"ללא כרטיס"}</small></div></button></li>`).join("")
-    : `<li class="empty">לא נמצאו נוסעים</li>`;
+  $("#eResults").innerHTML = list.length ? list.map(p=>`<li><button type="button" data-id="${p.id}" aria-current="${p.id===editId}"><div class="avatar">${esc(initials(p))}</div><div class="meta"><b>${esc(fullName(p))}</b><small>${p.cabin?`חדר ${esc(p.cabin)} · `:""}${p.cardUid?"כרטיס מקודד":"ללא כרטיס"}</small></div></button></li>`).join("")
+    : `<li class="empty">לא נמצאו אנשים</li>`;
   const p=editId&&byId(editId);
-  $("#formTitle").textContent=p?`עריכה: ${fullName(p)}`:"נוסע חדש";
-  $("#fFirst").value=p?.first||""; $("#fLast").value=p?.last||""; $("#fCabin").value=p?.cabin||""; $("#fType").value=p?.type||"אורח";
+  $("#formTitle").textContent=p?`עריכה: ${fullName(p)}`:"רישום חדש";
+  $("#fFirst").value=p?.first||""; $("#fLast").value=p?.last||""; $("#fCabin").value=p?.cabin||""; $("#fType").value=p?.type||"עובד";
   $("#delBtn").hidden=!p;
-  $("#cardInfo").innerHTML=p?(p.cardUid?`כרטיס מקושר: <span class="mono">${esc(p.cardUid)}</span>. קישור כרטיס אחר יחליף אותו.`:"לנוסע הזה עדיין אין כרטיס."):"מלאו פרטים, הניחו כרטיס על הקורא ולחצו \"קישור כרטיס\": הנוסע יישמר והכרטיס יקושר אליו.";
+  $("#cardInfo").innerHTML=p?(p.cardUid?`כרטיס מקושר: <span class="mono">${esc(p.cardUid)}</span>. קישור כרטיס אחר יחליף אותו.`:"לאדם הזה עדיין אין כרטיס."):"מלאו פרטים, הניחו כרטיס על הקורא ולחצו \"קישור כרטיס\": האדם יישמר והכרטיס יקושר אליו.";
   $("#shipInput").value=db.ship||""; $("#pinInput").value="";
   $("#usbLog").textContent=usb.log.length?usb.log.join("\n"):"אין עדיין תקשורת.";
 }
@@ -1052,7 +1052,7 @@ $("#paxForm").onsubmit=e=>{ e.preventDefault(); if(upsert()){ toast("נשמר");
 $("#delBtn").onclick=()=>{
   const p=byId(editId); if(!p) return;
   $("#cardInfo").innerHTML=`<span style="color:var(--alert)">למחוק את ${esc(fullName(p))} וכל ההיסטוריה שלו?</span> <button class="btn sm danger" type="button" id="delYes">מחיקה</button> <button class="btn sm" type="button" id="delNo">ביטול</button>`;
-  $("#delYes").onclick=()=>{ db.passengers=db.passengers.filter(x=>x!==p); editId=null; save(); renderEncode(); toast("הנוסע נמחק"); };
+  $("#delYes").onclick=()=>{ db.passengers=db.passengers.filter(x=>x!==p); editId=null; save(); renderEncode(); toast("האדם נמחק"); };
   $("#delNo").onclick=renderEncode;
 };
 /* NDEF text record "PAX:<id>" so a phone can also read who the card belongs to */
@@ -1103,14 +1103,14 @@ $("#exportBtn").onclick=()=>{
 };
 $("#importFile").onchange=async e=>{
   const f=e.target.files[0]; if(!f) return;
-  try{ const d=JSON.parse(await f.text()); if(!Array.isArray(d.passengers)) throw 0; db=d; save(); renderAll(); toast(`שוחזרו ${d.passengers.length} נוסעים`); }
+  try{ const d=JSON.parse(await f.text()); if(!Array.isArray(d.passengers)) throw 0; db=d; save(); renderAll(); toast(`שוחזרו ${d.passengers.length} אנשים`); }
   catch{ toast("הקובץ לא נראה כמו גיבוי של המערכת"); }
   e.target.value="";
 };
 function bindWipe(){
   $("#wipeRow").innerHTML=`<button class="btn danger" id="wipeAsk" type="button">מחיקת כל הנתונים</button>`;
   $("#wipeAsk").onclick=()=>{
-    $("#wipeRow").innerHTML=`<span style="color:var(--alert)">למחוק את כל הנוסעים, ההיסטוריה וההערות?</span> <button class="btn danger" id="wipeYes" type="button">מחיקה</button> <button class="btn" id="wipeNo" type="button">ביטול</button>`;
+    $("#wipeRow").innerHTML=`<span style="color:var(--alert)">למחוק את כל האנשים, ההיסטוריה וההערות?</span> <button class="btn danger" id="wipeYes" type="button">מחיקה</button> <button class="btn" id="wipeNo" type="button">ביטול</button>`;
     $("#wipeYes").onclick=()=>{ const pin=db.pin, ship=db.ship; db={ship,pin,seq:0,passengers:[]}; save(); bindWipe(); renderAll(); toast("כל הנתונים נמחקו"); };
     $("#wipeNo").onclick=bindWipe;
   };
